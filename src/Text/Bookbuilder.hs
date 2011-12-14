@@ -4,7 +4,7 @@ module Text.Bookbuilder
 
 -- TODO: Remember that 00-Something means it's frontmatter
 
-import Control.Monad ( liftM )
+import Control.Monad ( liftM, foldM )
 import Control.Monad.Trans ( liftIO )
 import Control.Monad.Reader ( ReaderT, ask, asks )
 import Data.Tree ( Tree(Node), Forest )
@@ -47,7 +47,7 @@ compile = do
 	let name = parseTitle root
 
 	tree <- liftIO $ buildTree src
-	content <- liftIO $ reduce tree
+	content <- reduce tree
 
 	let doc = content `withDefaultTitle` name
 	let title = getTitle doc
@@ -98,19 +98,29 @@ buildTree src = ifM (doesFileExist src)
 withDefaultTitle d t = d
 getTitle d = ""
 render d = ""
+joinPandoc x y = x
 
 -- | Bookbuilder Behavior
 parseTitle t = t
+getTemplate n = return ""
+renderTemplate t title content = Pandoc (Meta [] [] []) []
+parse :: FilePath -> Configged IO Pandoc
+parse p = return emptyDoc
+emptyDoc = Pandoc (Meta [] [] []) []
 
-reduce :: Tree FilePath -> Contextual IO Pandoc
-reduce (Tree path sections) = foldM (join 0) "" sections
+reduce :: Tree FilePath -> Configged IO Pandoc
+reduce (Node path sections) = do
+	contents <- mapM (load 0) sections
+	return $ foldr joinPandoc emptyDoc contents
 
-join :: Integer -> Tree FilePath -> Tree FilePath -> Contextual IO Pandoc
-join n (Tree a as) (Tree b bs) = (load n a as) `joinPandoc` (load n b bs)
-
-load :: Integer -> FilePath -> [Tree FilePath] -> Contextual IO Pandoc
-load n path children = do
+load :: Integer -> Tree FilePath -> Configged IO Pandoc
+load n (Node path children) = do
+	leaf <- liftIO $ doesFileExist path
 	template <- getTemplate n
 	let title = parseTitle path
-	let leaf = liftIO $ doesFileExist path
-	if leaf then foldM (join $ n + 1) "" children else parse path
+	content <- if leaf then loadLeaf else parse path
+	return $ renderTemplate template title content where
+	-- Todo: dry this up
+	loadLeaf = do
+		contents <- mapM (load $ n + 1) children
+		return $ foldr joinPandoc emptyDoc contents
