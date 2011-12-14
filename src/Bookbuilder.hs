@@ -1,65 +1,129 @@
 module Main where
 
-import Control.Monad (when, unless)
+-- TODO: Remember that 00-Something means it's frontmatter
+
+import Control.Monad ( when, unless, liftM )
+import Control.Monad.Trans ( liftIO )
+import Control.Monad.Reader ( ReaderT(runReaderT), ask, asks )
+import Data.Tree ( Tree(Node), Forest )
 import System.Console.GetOpt
 import System.Exit ( exitWith, ExitCode (..) )
 import System.Environment ( getArgs, getProgName )
-import System.FilePath
+import System.FilePath ( combine )
 import System.IO ( hPutStrLn, stderr )
 -- import System.Directory ( getAppUserDataDirectory, doesFileExist )
+import Text.Pandoc ( Pandoc(Pandoc), Meta(Meta) )
 
 -- | Options
 -- | Data structure for command line options.
-data Opt = Opt
-	{ optConfigDir :: String
-	, optHelp      :: Bool
+data Config = Config
+	{ confRoot        :: FilePath
+	, confSourceDir   :: FilePath
+	, confTemplateDir :: FilePath
+	, confOutputDir   :: FilePath
+	, confCombineTool :: Maybe String
+	, confOmitEmpty   :: Bool
+	, confHelp        :: Bool
 	}
+type Configged = ReaderT Config
 
 -- | Defaults for command-line options.
-defaultOpts :: Opt
-defaultOpts = Opt
-	{ optConfigDir = "config"
-	, optHelp      = False
+defaultConfig :: Config
+defaultConfig = Config
+	{ confRoot        = "."
+	, confSourceDir   = "src"
+	, confTemplateDir = "templates"
+	, confOutputDir   = "build"
+	, confCombineTool = Nothing
+	, confOmitEmpty   = True
+	, confHelp        = False
 	}
 
 -- | A list of functions, each transforming the options data structure
 -- | in response to a command-line option.
-options :: [OptDescr (Opt -> IO Opt)]
+options :: [OptDescr (Config -> IO Config)]
 options =
-	[ Option "c" ["config"]
-		(ReqArg (\arg opt -> return opt { optConfigDir = arg }) "DIR")
-		"the directory within the book containing the config files"
+	[ Option "s" ["src"]
+		(ReqArg (\arg opt -> return opt { confSourceDir = arg }) "DIR")
+		"directory containing the book source files"
+
+	, Option "m" ["templates"]
+		(ReqArg (\arg opt -> return opt { confTemplateDir = arg }) "DIR")
+		"directory containing template files"
+
+	, Option "o" ["build"]
+		(ReqArg (\arg opt -> return opt { confOutputDir = arg }) "DIR")
+		"destination directory for the compiled book"
+
+	, Option "c" ["combine"]
+		(ReqArg (\arg opt -> return opt { confCombineTool = Just arg }) "PROG")
+		"use a customized tool to combining files"
+
+	, Option "a" ["all"]
+		(NoArg (\opt -> return opt { confOmitEmpty = True }))
+		"create stubs for empty directories"
+
 	, Option "h" ["help"]
-		(NoArg (\opt -> return opt { optHelp = True}))
-		"display this help message"
+		(NoArg (\opt -> return opt { confHelp = True}))
+		"display this help"
 	]
 
-
+-- | Main entry point
+-- | Parse and ensure command line arguments
+-- | Generate configuration environment
 main :: IO ()
 main = do
+	name <- getProgName
 	argv <- getArgs
-	-- let book = getBookPath
-	-- We can do this in one line?
 	let (actions, args, errors) = getOpt Permute options argv
 
 	unless (null errors) $ do
-		name <- getProgName
 		mapM_ (\e -> hPutStrLn stderr (name ++ ": " ++ e)) errors
 		hPutStrLn stderr $ usageInfo name options
 		exitWith $ ExitFailure 2
 
-	opts <- foldl (>>=) (return defaultOpts) actions
-	let Opt { optConfigDir = configDir
-			, optHelp      = help
-			} = opts
+	let path = fullPath $ if (null args)
+		then confRoot defaultConfig
+		else args !! 0
+	config <- foldl (>>=) (return defaultConfig{ confRoot=path }) actions
 
-	when help $ do
-		name <- getProgName
+	when (confHelp config) $ do
 		putStrLn $ usageInfo name options
 		exitWith ExitSuccess
 	
-	putStrLn configDir
+	runReaderT compile config
 
+
+-- | File system functions
+fullPath p = p
+buildTree src = return $ Node src []
+
+-- | Pandoc functions
+withDefaultTitle d t = d
+getTitle d = ""
+render d = ""
+
+-- | Bookbuilder Behavior
+parseTitle t = t
+reduce t = return $ Pandoc (Meta [] [] []) []
+
+-- | Actual document compilation
+compile :: Configged IO ()
+compile = do
+	root <- asks confRoot
+	let askDir = liftM (combine root) . asks
+	src <- askDir confSourceDir
+	templates <- askDir confTemplateDir
+	destdir <- askDir confOutputDir
+	omitEmpty <- asks confOmitEmpty
+
+	let title = parseTitle root
+	tree <- liftIO $ buildTree src
+	content <- liftIO $ reduce tree
+	let doc = content `withDefaultTitle` title
+	let string = render doc
+	let dest = destdir `combine` (getTitle doc)
+	liftIO $ writeFile dest string
 	
 
 {-
