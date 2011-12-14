@@ -101,44 +101,16 @@ render d = ""
 
 -- | Bookbuilder Behavior
 parseTitle t = t
-reduce t = return $ Pandoc (Meta [] [] []) []
-	
 
-{-
-	type Portion = (String, String)
+reduce :: Tree FilePath -> Contextual IO Pandoc
+reduce (Tree path sections) = foldM (join 0) "" sections
 
-	reduce :: FilePath -> String -> IO Portion
-	reduce root title = do
-	...
+join :: Integer -> Tree FilePath -> Tree FilePath -> Contextual IO Pandoc
+join n (Tree a as) (Tree b bs) = (load n a as) `joinPandoc` (load n b bs)
 
-build :: Tree FilePath -> IO (String, Pandoc)
-build (Tree path sections) = (parseTitle path, foldr (join 0) "" sections)
-
-join :: Integer -> Tree FilePath -> Tree FilePath -> IO Pandoc
-join n (Tree ta as) (Tree tb bs) = (show n ta as) `joinPandoc` (show n tb bs)
-
-show :: Integer -> FilePath -> [Tree FilePath] -> IO Pandoc
-show n path children = do
+load :: Integer -> FilePath -> [Tree FilePath] -> Contextual IO Pandoc
+load n path children = do
 	template <- getTemplate n
 	let title = parseTitle path
-	let content = if isDirectory path
-		then foldr (join n+1) "" children
-		else parse path
-	return $ render template title content
-
-...
-
-joinSections :: Tree FilePath -> Tree FilePath -> String
-joinSections (Tree t1 s1) (Tree t2 s2) = (showSection t1 s1) ++ (showSection t2 s2)
-
-showSection :: FilePath -> [Tree FilePath] -> String
-showSection path [] = "\section{" ++ (parseTitle path) ++ "}" ++ (parse path) ++ "\endsection"
-showSection title chapters = "\section{" ++ (parseTitle title) ++ "}" ++ (foldr joinChapters "" chapters) ++ "\endsection"
-
-joinChapters :: Tree FilePath -> Tree FilePath -> String
-joinChapters (Tree t1 c1) (Tree t2 c2) = (showChapter t1 c1) ++ (showChapter t2 c2)
-
-showChapter :: FilePath -> [Tree Filepath] -> String
-showChapter path [] = "\section{" ++ (parseTitle path) ++ "}" ++ (parse path) ++ "\endsection"
-showChapter path cs = Error
--}
+	let leaf = liftIO $ doesFileExist path
+	if leaf then foldM (join $ n + 1) "" children else parse path
