@@ -9,6 +9,8 @@ module Text.Bookbuilder
 -- TODO: treat frontmatter special
 -- TODO: handle ioerrors in template name parsing
 -- TODO: allow trailing newline supression (why is \endchapter not newlined?)
+-- TODO: TEMPLATES WILL NO LONGER ADD NEWLINES
+-- TODO: hlint
 
 import Control.Monad ( liftM, liftM2, liftM3, filterM, when )
 import Control.Monad.Loops ( andM, orM )
@@ -88,7 +90,7 @@ dest path = do
 	base <- liftM2 combine (asks confRoot) (return path)
 	isDir <- liftIO $ doesDirectoryExist base
 	file <- if null path || isDir then defaultDest else return ""
-	return $ (offerExtension "tex") $ combine base file
+	return $ offerExtension "tex" $ combine base file
 
 defaultDest :: Configged IO FilePath
 defaultDest = do
@@ -99,9 +101,11 @@ defaultDest = do
 
 createDest :: String -> [Integer] -> [Integer] -> String
 createDest t [] [] = t
-createDest t lo hi | lo == hi = join "-" [t, sep lo]
+createDest t lo hi | null hi = join "--" [t, sep lo]
+                   | null lo = join "--" [t, sep hi]
+                   | lo == hi = join "-" [t, sep lo]
                    | otherwise = join "-" [t, sep lo, sep hi]
-	where sep xs = if null xs then "--" else join "_" $ map show xs
+	where sep = join "_" . map show
 
 
 
@@ -202,17 +206,17 @@ locationInRange loc low high = loc `gte` low && loc `lte` high where
 	lte = is (<=)
 	is op loc bar | null bar = True -- Null will do whatever you want
 	              | op loc bar = True -- It already works
-				  | loc == (take (length loc) bar) = True -- We must descend
-				  | (take (length bar) loc) == bar = True -- We must descend
+				  | loc == take (length loc) bar = True -- We must descend
+				  | take (length bar) loc == bar = True -- We must descend
 				  | otherwise = False
 
 getLocation :: FilePath -> Configged IO [Integer]
 getLocation path = do
 	root <- asks confRoot
 	if root == path
-	then return []
-	else return . map locationIndex . splitPath =<<
-		liftM2 makeRelative src (return path)
+		then return []
+		else return . map locationIndex . splitPath =<<
+			liftM2 makeRelative src (return path)
 
 locationIndex :: String -> Integer
 locationIndex name = if null nums then 1 else read nums where
@@ -241,14 +245,14 @@ data Template = Template
 	} deriving (Eq, Show)
 
 instance Ord Template where
-	t1 <= t2 | (len t1) == (len t2) = cmp (tmplMatches t1) (tmplMatches t2)
-	         | otherwise = (len t1) < (len t2) where
+	t1 <= t2 | len t1 == len t2 = cmp (tmplMatches t1) (tmplMatches t2)
+	         | otherwise = len t1 < len t2 where
 		len = length . tmplMatches
 		cmp [] _ = True
 		cmp (_:xs) (Nothing:ys) = True
 		cmp (Nothing:xs) (_:ys) = False
-		cmp (Just x:xs) (Just y:ys) | (length x) == (length y) = cmp xs ys
-		                            | otherwise = (length x) < (length y)
+		cmp (Just x:xs) (Just y:ys) | length x == length y = cmp xs ys
+		                            | otherwise = length x < length y
 
 buildTemplate :: FilePath -> IO Template
 buildTemplate path = do
@@ -271,7 +275,7 @@ parseRange [x] = Just [read x]
 parseRange (x:"":_) = Nothing
 parseRange (x:"_":_) = Nothing
 parseRange (x:y:_) = Just [(low x)..(read y)] where
-	low z = if (null z) || (z == "_") then 0 else read z
+	low z = if null z || (z == "_") then 0 else read z
 
 templateList :: Configged IO [Template]
 templateList = do
@@ -279,9 +283,9 @@ templateList = do
 	theme <- asks confTheme
 	let suffix = offerExtension "tex" theme
 	files <- liftIO $ ls dir
-	let tmpl = (\p -> (endswith suffix p) && (not $ startswith "any" p))
+	let tmpl p = endswith suffix p && not $ startswith "any" p
 	let names = map (combine dir) files
-	ts <- liftIO $ mapM buildTemplate $ filter tmpl $ names
+	ts <- liftIO $ mapM buildTemplate $ filter tmpl names
 	return $ sort ts
 
 findTemplate :: String -> [Integer] -> [Template] -> String
@@ -294,15 +298,15 @@ templateTakes xs (Template _ os) = matches xs os where
 	matches [] y = y == []
 	matches _ [] = False
 	matches (x:xs) (Nothing:os) = matches xs os
-	matches (x:xs) (Just o:os) = (x `elem` o) && (matches xs os)
+	matches (x:xs) (Just o:os) = (x `elem` o) && matches xs os
 
 fallbackTemplate :: Configged IO String
 fallbackTemplate = do
 	dir <- templates
 	theme <- asks confTheme
-	let file = combine dir $ "any" ++ (offerExtension "tex" theme)
+	let file = combine dir $ "any" ++ offerExtension "tex" theme
 	read <- liftIO $ doesFileExist file
-	if read then (liftIO $ readFile file) else return "$body$\n"
+	if read then liftIO $ readFile file else return "$body$\n"
 
 getTemplate :: FilePath -> Configged IO String
 getTemplate path = do
