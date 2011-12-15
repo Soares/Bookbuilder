@@ -21,8 +21,8 @@ defaultConfig = Config
 	, confSourceDir   = "src"
 	, confTemplateDir = "templates"
 	, confOutputDest  = ""
-	, confStart       = Location []
-	, confEnd         = Unbounded
+	, confStart       = []
+	, confEnd         = []
 	, confHelp        = False
 	}
 

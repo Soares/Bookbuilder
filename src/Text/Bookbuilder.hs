@@ -5,11 +5,13 @@ module Text.Bookbuilder
 	-}
 	where
 
-import Char ( toLower )
+-- TODO: treat frontmatter special
+
 import Control.Monad ( liftM, liftM2, liftM3, filterM )
 import Control.Monad.Loops ( andM, orM )
 import Control.Monad.Trans ( liftIO )
 import Control.Monad.Reader ( ReaderT, asks )
+import Data.Char ( toLower )
 import Data.List ( sort )
 import Data.List.Split ( split, startsWithOneOf )
 import Data.List.Utils ( startswith )
@@ -31,6 +33,8 @@ import System.FilePath.Posix
 	, addExtension
 	, splitPath
 	, normalise
+	, takeFileName
+	, dropTrailingPathSeparator
 	, takeDirectory )
 import System.Posix.Files
 	( getFileStatus
@@ -82,7 +86,7 @@ dest :: Configged IO FilePath
 dest = do
 	base <- root
 	part <- asks confOutputDest
-	file <- if (null part) then defaultDest else return part
+	file <- if null part then defaultDest else return part
 	return $ extend $ combine base file
 	where extend p | hasExtension p = p
 	               | otherwise = addExtension p "tex"
@@ -96,8 +100,9 @@ defaultDest = do
 
 createDest :: String -> [Integer] -> [Integer] -> String
 createDest t [] [] = t
-createDest t lo hi = t ++ "." ++ (sep lo) ++ "." ++ (sep hi) where
-	sep list = if (null list) then "-" else join "-" $ map show list
+createDest t lo hi | lo == hi = join "." [t, sep lo]
+                   | otherwise = join "." [t, sep lo, sep hi]
+	where sep xs = if null xs then "--" else join "_" $ map show xs
 
 
 -- | Control.Monad utilities        ====================================
@@ -122,7 +127,7 @@ absPath :: FilePath -> IO FilePath
 absPath path | isRelative path = do
 	dot <- getCurrentDirectory
 	return $ normalise $ dot `combine` path
-absPath path = return path
+absPath path = return $ normalise path
 
 
 
@@ -146,21 +151,21 @@ pandocName p = case takeExtension (map toLower p) of
 pandocify :: String -> String -> Configged IO String
 pandocify path contents = do
 	template <- getTemplate path
-	srcDir <- src
-	base <- root
-	let rawTitle = if path == srcDir then base else path
-	let title = parseTitle rawTitle
+	title <- liftM parseTitle $ ifM isTop root (return path)
 	let pname = pandocName path
-	-- TODO: fromJust is bad
 	let parse = (fromJust $ lookup pname readers) defaultParserState
 	let render = writeLaTeX defaultWriterOptions
+		-- TODO: add writer variables
+		-- parent, book, count, total,
+		-- N, parentN, countN, totalN
 		{ writerStandalone       = True
 		, writerTemplate         = template
 		, writerChapters         = True }
-	return $ render $ (parse contents) `withDefaultTitle` title
+	return $ render $ parse contents `withDefaultTitle` title
+	where isTop = liftM2 (==) src (return path)
 
 withDefaultTitle :: Pandoc -> String -> Pandoc
-withDefaultTitle (Pandoc (Meta [] as d) bs) t = (Pandoc (Meta [Str t] as d) bs)
+withDefaultTitle (Pandoc (Meta [] as d) bs) t = Pandoc (Meta [Str t] as d) bs
 withDefaultTitle doc _ = doc
 
 
@@ -186,8 +191,8 @@ locationInRange loc low high = loc >= low && loc `lte` high where
 
 getLocation :: FilePath -> Configged IO [Integer]
 getLocation path = do
-	dirs <- liftM (splitPath . makeRelative path) src
-	return $ map locationIndex dirs
+	rel <- liftM2 makeRelative src (return path)
+	return $ map locationIndex $ splitPath rel
 
 locationIndex :: String -> Integer
 locationIndex name = if null nums then 1 else read nums where
@@ -198,13 +203,14 @@ locationIndex name = if null nums then 1 else read nums where
 -- | Bookbuilder behavior           ====================================
 
 parseTitle :: FilePath -> String
-parseTitle = deCamel . dropExtension . dropIndex where
+parseTitle = deCamel . dropExtension . dropIndex . filePart where
+	filePart = takeFileName . dropTrailingPathSeparator
 	dropIndex = dropWhile $ flip elem "_.-0123456789"
 	deCamel = join " " . split (startsWithOneOf ['A'..'Z'])
 
 -- Todo
 getTemplate :: FilePath -> Configged IO String
-getTemplate path = return "$body$"
+getTemplate path = return "::$title$::\n$body$\n\n"
 
 
 
@@ -262,7 +268,6 @@ flatten (Node path children) = do
 
 compile :: Configged IO ()
 compile = do
-	-- TODO: reduntant title-grabbing
 	tree <- liftIO . buildTree =<< src
 	content <- flatten tree
 	write <- liftM writeFile dest
