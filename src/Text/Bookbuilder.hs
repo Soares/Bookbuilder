@@ -8,6 +8,7 @@ module Text.Bookbuilder
 
 -- TODO: treat frontmatter special
 -- TODO: handle ioerrors in template name parsing
+-- TODO: allow trailing newline supression (why is \endchapter not newlined?)
 
 import Control.Monad ( liftM, liftM2, liftM3, filterM, when )
 import Control.Monad.Loops ( andM, orM )
@@ -162,8 +163,9 @@ pandocName p = case takeExtension (map toLower p) of
 
 pandocify :: String -> String -> Configged IO String
 pandocify path contents = do
-	template <- getTemplate path
-	title <- liftM parseTitle $ ifM isTop (asks confRoot) (return path)
+	base <- ifM isTop (asks confRoot) (return path)
+	template <- getTemplate base
+	let title = parseTitle base
 	let pname = pandocName path
 	let parse = (fromJust $ lookup pname readers) defaultParserState
 	let render = writeLaTeX defaultWriterOptions
@@ -206,8 +208,11 @@ locationInRange loc low high = loc `gte` low && loc `lte` high where
 
 getLocation :: FilePath -> Configged IO [Integer]
 getLocation path = do
-	rel <- liftM2 makeRelative src (return path)
-	return $ map locationIndex $ splitPath rel
+	root <- asks confRoot
+	if root == path
+	then return []
+	else return . map locationIndex . splitPath =<<
+		liftM2 makeRelative src (return path)
 
 locationIndex :: String -> Integer
 locationIndex name = if null nums then 1 else read nums where
@@ -248,8 +253,8 @@ instance Ord Template where
 buildTemplate :: FilePath -> IO Template
 buildTemplate path = do
 	content <- readFile path
-	let parts = dropLast $ splitOn "-" path
-	return $ Template content (map parseOption parts)
+	let parts = dropLast $ splitOn "-" $ takeFileName path
+	return $ Template (content ++ "\n") (map parseOption parts)
 
 parseOption :: String -> Maybe [Integer]
 parseOption path = do
@@ -275,7 +280,9 @@ templateList = do
 	let suffix = offerExtension "tex" theme
 	files <- liftIO $ ls dir
 	let tmpl = (\p -> (endswith suffix p) && (not $ startswith "any" p))
-	liftIO $ mapM buildTemplate $ filter tmpl files
+	let names = map (combine dir) files
+	ts <- liftIO $ mapM buildTemplate $ filter tmpl $ names
+	return $ sort ts
 
 findTemplate :: String -> [Integer] -> [Template] -> String
 findTemplate fb loc ts = get $ filter (templateTakes loc) ts
@@ -284,6 +291,8 @@ findTemplate fb loc ts = get $ filter (templateTakes loc) ts
 
 templateTakes :: [Integer] -> Template -> Bool
 templateTakes xs (Template _ os) = matches xs os where
+	matches [] y = y == []
+	matches _ [] = False
 	matches (x:xs) (Nothing:os) = matches xs os
 	matches (x:xs) (Just o:os) = (x `elem` o) && (matches xs os)
 
@@ -293,7 +302,7 @@ fallbackTemplate = do
 	theme <- asks confTheme
 	let file = combine dir $ "any" ++ (offerExtension "tex" theme)
 	read <- liftIO $ doesFileExist file
-	if read then (liftIO $ readFile file) else return "$body$"
+	if read then (liftIO $ readFile file) else return "$body$\n"
 
 getTemplate :: FilePath -> Configged IO String
 getTemplate path = do
@@ -306,8 +315,13 @@ getTemplate path = do
 
 -- | Bookbuilder file discovery     ====================================
 
+absify :: Config -> IO Config
+absify conf = do
+	root <- absPath (confRoot conf)
+	return $ conf{ confRoot=root }
+
 normalize :: Config -> IO Config
-normalize conf = if not $ confDetect conf then return conf else do
+normalize conf = if not $ confDetect conf then absify conf else do
 	let cur = confRoot conf
 	let src = confSourceDir conf
 	(root, range) <- detect cur [src]
