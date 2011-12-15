@@ -1,26 +1,30 @@
 module Text.Bookbuilder
-	{-
+	{- TODO
 	( Config(..)
+	, normalize
 	, compile )
 	-}
 	where
 
 -- TODO: treat frontmatter special
+-- TODO: handle ioerrors in template name parsing
 
-import Control.Monad ( liftM, liftM2, liftM3, filterM )
+import Control.Monad ( liftM, liftM2, liftM3, filterM, when )
 import Control.Monad.Loops ( andM, orM )
 import Control.Monad.Trans ( liftIO )
-import Control.Monad.Reader ( ReaderT, asks )
+import Control.Monad.Reader ( ReaderT, asks, local )
 import Data.Char ( toLower )
-import Data.List ( sort )
-import Data.List.Split ( split, startsWithOneOf )
-import Data.List.Utils ( startswith )
-import Data.Maybe ( fromJust )
+import Data.Ord ( Ordering(LT, EQ, GT), compare )
+import Data.List ( sort, nub )
+import Data.List.Split ( split, splitOn, startsWithOneOf )
+import Data.List.Utils ( startswith, endswith )
+import Data.Maybe ( fromJust, isNothing )
 import Data.Tree ( Tree(Node), Forest )
 import Data.String.Utils ( join )
 import System.Directory
 	( getCurrentDirectory
 	, getDirectoryContents
+	, canonicalizePath
 	, doesDirectoryExist
 	, doesFileExist )
 import System.FilePath.Posix
@@ -31,10 +35,12 @@ import System.FilePath.Posix
 	, hasExtension
 	, takeExtension
 	, addExtension
-	, splitPath
 	, normalise
+	, splitPath
+	, joinPath
 	, takeFileName
 	, dropTrailingPathSeparator
+	, addTrailingPathSeparator
 	, takeDirectory )
 import System.Posix.Files
 	( getFileStatus
@@ -56,7 +62,9 @@ data Config = Config
 	{ confRoot        :: FilePath
 	, confSourceDir   :: FilePath
 	, confTemplateDir :: FilePath
-	, confOutputDest  :: FilePath
+	, confTheme       :: String
+	, confOutputDest  :: Maybe FilePath
+	, confDetect      :: Bool
 	, confStart       :: [Integer]
 	, confEnd         :: [Integer]
 	, confHelp        :: Bool
@@ -67,42 +75,33 @@ data Config = Config
 type Configged = ReaderT Config
 
 
--- | Helper functions
-requiredDirs :: Config -> [FilePath]
-requiredDirs conf = [confSourceDir conf]
-
-
 -- | Configged IO accessors
-root :: Configged IO FilePath
-root = liftM2 bookPath (asks confRoot) (asks requiredDirs) >>= liftIO
-
 src :: Configged IO FilePath
-src = liftM2 combine root (asks confSourceDir)
+src = liftM2 combine (asks confRoot) (asks confSourceDir)
 
 templates :: Configged IO FilePath
-templates = liftM2 combine root (asks confTemplateDir)
+templates = liftM2 combine (asks confRoot) (asks confTemplateDir)
 
-dest :: Configged IO FilePath
-dest = do
-	base <- root
-	part <- asks confOutputDest
-	file <- if null part then defaultDest else return part
-	return $ extend $ combine base file
-	where extend p | hasExtension p = p
-	               | otherwise = addExtension p "tex"
+dest :: FilePath -> Configged IO FilePath
+dest path = do
+	base <- liftM2 combine (asks confRoot) (return path)
+	isDir <- liftIO $ doesDirectoryExist base
+	file <- if null path || isDir then defaultDest else return ""
+	return $ (offerExtension "tex") $ combine base file
 
 defaultDest :: Configged IO FilePath
 defaultDest = do
-	title <- liftM parseTitle root
+	title <- liftM parseTitle (asks confRoot)
 	lower <- asks confStart
 	upper <- asks confEnd
 	return $ createDest title lower upper
 
 createDest :: String -> [Integer] -> [Integer] -> String
 createDest t [] [] = t
-createDest t lo hi | lo == hi = join "." [t, sep lo]
-                   | otherwise = join "." [t, sep lo, sep hi]
+createDest t lo hi | lo == hi = join "-" [t, sep lo]
+                   | otherwise = join "-" [t, sep lo, sep hi]
 	where sep xs = if null xs then "--" else join "_" $ map show xs
+
 
 
 -- | Control.Monad utilities        ====================================
@@ -114,14 +113,27 @@ notM :: Monad m => m Bool -> m Bool
 notM = liftM not
 
 
+-- | Data.List utilities            ====================================
+
+dropLast :: [a] -> [a]
+dropLast (x:[]) = []
+dropLast (x:xs) = x:dropLast xs
+
 -- | System.FilePath utilities      ====================================
 
 ls :: FilePath -> IO [FilePath]
 ls = fmap (sort . filter isVisible) . getDirectoryContents
 	where isVisible = not . startswith "."
 
+exists :: FilePath -> IO Bool
+exists p = liftM2 (||) (doesDirectoryExist p) (doesFileExist p)
+
 fileHasData :: FilePath -> IO Bool
 fileHasData file = fmap ((> 0) . fileSize) (getFileStatus file)
+
+offerExtension :: String -> FilePath -> FilePath
+offerExtension ext p | hasExtension p = p
+                     | otherwise = addExtension p ext
 
 absPath :: FilePath -> IO FilePath
 absPath path | isRelative path = do
@@ -151,7 +163,7 @@ pandocName p = case takeExtension (map toLower p) of
 pandocify :: String -> String -> Configged IO String
 pandocify path contents = do
 	template <- getTemplate path
-	title <- liftM parseTitle $ ifM isTop root (return path)
+	title <- liftM parseTitle $ ifM isTop (asks confRoot) (return path)
 	let pname = pandocName path
 	let parse = (fromJust $ lookup pname readers) defaultParserState
 	let render = writeLaTeX defaultWriterOptions
@@ -175,6 +187,7 @@ withDefaultTitle doc _ = doc
 -- | This is a wee bit hackish because ordering lists is *almost* correct,
 -- | except we always descend into children if the parent was in range
 -- | and we treat [] as unbounded on both sides. This leads to:
+-- |    [3] >= [3, 1]
 -- |	[3, 3] <= [3, 3, 1] <= [3, 3]
 -- |	[] <= [1] <= []
 -- | Which is why we aren't using an Ord instance.
@@ -182,12 +195,14 @@ withDefaultTitle doc _ = doc
 -- | WARNING: This will also say that [3, 3] <= [17, 17, 1] <= [3, 3],
 -- | only use this to *decide* whether to descend. The result is only
 -- | valid if the parent location was already in range.
-locationInRange :: [Integer] -> [Integer] -> [Integer] -> Bool
-locationInRange loc low high = loc >= low && loc `lte` high where
-	loc `lte` bar | null bar = True
-	              | loc <= bar = True
-	              | length loc > length bar = True
-	              | otherwise = False
+locationInRange loc low high = loc `gte` low && loc `lte` high where
+	gte = is (>=)
+	lte = is (<=)
+	is op loc bar | null bar = True -- Null will do whatever you want
+	              | op loc bar = True -- It already works
+				  | loc == (take (length loc) bar) = True -- We must descend
+				  | (take (length bar) loc) == bar = True -- We must descend
+				  | otherwise = False
 
 getLocation :: FilePath -> Configged IO [Integer]
 getLocation path = do
@@ -198,9 +213,12 @@ locationIndex :: String -> Integer
 locationIndex name = if null nums then 1 else read nums where
 	nums = name =~ "^([0-9]+)"
 
+pathIndex :: FilePath -> Integer
+pathIndex = locationIndex . takeFileName . dropTrailingPathSeparator
 
 
--- | Bookbuilder behavior           ====================================
+
+-- | Bookbuilder parsing            ====================================
 
 parseTitle :: FilePath -> String
 parseTitle = deCamel . dropExtension . dropIndex . filePart where
@@ -208,25 +226,108 @@ parseTitle = deCamel . dropExtension . dropIndex . filePart where
 	dropIndex = dropWhile $ flip elem "_.-0123456789"
 	deCamel = join " " . split (startsWithOneOf ['A'..'Z'])
 
--- Todo
+
+
+-- | Bookbuilder templates          ====================================
+
+data Template = Template
+	{ tmplSource  :: String
+	, tmplMatches :: [Maybe [Integer]]
+	} deriving (Eq, Show)
+
+instance Ord Template where
+	t1 <= t2 | (len t1) == (len t2) = cmp (tmplMatches t1) (tmplMatches t2)
+	         | otherwise = (len t1) < (len t2) where
+		len = length . tmplMatches
+		cmp [] _ = True
+		cmp (_:xs) (Nothing:ys) = True
+		cmp (Nothing:xs) (_:ys) = False
+		cmp (Just x:xs) (Just y:ys) | (length x) == (length y) = cmp xs ys
+		                            | otherwise = (length x) < (length y)
+
+buildTemplate :: FilePath -> IO Template
+buildTemplate path = do
+	content <- readFile path
+	let parts = dropLast $ splitOn "-" path
+	return $ Template content (map parseOption parts)
+
+parseOption :: String -> Maybe [Integer]
+parseOption path = do
+	groups <- mapM parseGroup $ splitOn "'" path
+	return $ nub $ sort $ concat groups
+
+parseGroup :: String -> Maybe [Integer]
+parseGroup = parseRange . splitOn "~"
+
+parseRange :: [String] -> Maybe [Integer]
+parseRange [] = Just []
+parseRange ["_"] = Nothing
+parseRange [x] = Just [read x]
+parseRange (x:"":_) = Nothing
+parseRange (x:"_":_) = Nothing
+parseRange (x:y:_) = Just [(low x)..(read y)] where
+	low z = if (null z) || (z == "_") then 0 else read z
+
+templateList :: Configged IO [Template]
+templateList = do
+	dir <- templates
+	theme <- asks confTheme
+	let suffix = offerExtension "tex" theme
+	files <- liftIO $ ls dir
+	let tmpl = (\p -> (endswith suffix p) && (not $ startswith "any" p))
+	liftIO $ mapM buildTemplate $ filter tmpl files
+
+findTemplate :: String -> [Integer] -> [Template] -> String
+findTemplate fb loc ts = get $ filter (templateTakes loc) ts
+	where get [] = fb
+	      get (x:xs) = tmplSource x
+
+templateTakes :: [Integer] -> Template -> Bool
+templateTakes xs (Template _ os) = matches xs os where
+	matches (x:xs) (Nothing:os) = matches xs os
+	matches (x:xs) (Just o:os) = (x `elem` o) && (matches xs os)
+
+fallbackTemplate :: Configged IO String
+fallbackTemplate = do
+	dir <- templates
+	theme <- asks confTheme
+	let file = combine dir $ "any" ++ (offerExtension "tex" theme)
+	read <- liftIO $ doesFileExist file
+	if read then (liftIO $ readFile file) else return "$body$"
+
 getTemplate :: FilePath -> Configged IO String
-getTemplate path = return "::$title$::\n$body$\n\n"
+getTemplate path = do
+	templates <- templateList
+	location <- getLocation path
+	fb <- fallbackTemplate
+	return $ findTemplate fb location templates
 
 
 
 -- | Bookbuilder file discovery     ====================================
 
+normalize :: Config -> IO Config
+normalize conf = if not $ confDetect conf then return conf else do
+	let cur = confRoot conf
+	let src = confSourceDir conf
+	(root, range) <- detect cur [src]
+	return conf{confRoot=root, confStart=range, confEnd=range}
+
 -- | Expand the given directory to an absolute directory, then walk up the
 -- | path looking for a directory that has the requisite subdirectories.
 -- | Fall back to the absolute path on failure.
-bookPath :: FilePath -> [FilePath] -> IO FilePath
-bookPath root lookFor = absPath root >>= search where
-	search "/" = absPath root
-	search path = ifM (checksOut path)
-		(return path)
-		(search $ takeDirectory path)
-	checksOut path = andM $ map (isThere . combine path) lookFor
-	isThere p = liftM2 (||) (doesDirectoryExist p) (doesFileExist p)
+detect :: FilePath -> [FilePath] -> IO (FilePath, [Integer])
+detect start lookFor = do
+	normpath <- canonicalizePath =<< absPath start
+	detection <- search normpath []
+	case detection of
+		Nothing -> return (normpath, [])
+		Just (root, srcnum:loc) -> return (root, loc)
+	where search "/" _ = return Nothing
+	      search path xs = ifM (checksOut path)
+			(return $ Just (path, xs))
+			(search (takeDirectory path) (pathIndex path : xs))
+	      checksOut path = andM $ map (exists . combine path) lookFor
 
 -- | Build a tree out of the filepaths in the book's source directory
 buildTree :: FilePath -> IO (Tree FilePath)
@@ -251,8 +352,7 @@ hasContent (Node p []) = liftIO $ andM [doesFileExist p, fileHasData p]
 hasContent _ = return True
 
 isInRange :: Tree FilePath -> Configged IO Bool
-isInRange (Node t _) = liftM3 locationInRange
-	(getLocation t) (asks confStart) (asks confEnd)
+isInRange (Node t _) = liftM3 locationInRange (getLocation t) (asks confStart) (asks confEnd)
 
 
 
@@ -269,6 +369,9 @@ flatten (Node path children) = do
 compile :: Configged IO ()
 compile = do
 	tree <- liftIO . buildTree =<< src
-	content <- flatten tree
-	write <- liftM writeFile dest
+	content <- flatten =<< prune tree
+	destPart <- asks confOutputDest
+	write <- case destPart of
+		Nothing -> return putStr
+		Just path -> liftM writeFile (dest path)
 	liftIO $ write content
