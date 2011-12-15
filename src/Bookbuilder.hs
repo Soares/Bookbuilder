@@ -4,11 +4,15 @@ module Main where
 
 import Control.Monad ( when, unless )
 import Control.Monad.Reader ( ReaderT(runReaderT) )
+import Data.Maybe ( isNothing )
+import Data.String.Utils ( split )
 import System.Console.GetOpt
 import System.Exit ( exitWith, ExitCode (..) )
 import System.Environment ( getArgs, getProgName )
 import System.IO ( hPutStrLn, stderr )
-import Text.Bookbuilder ( Config(..), compile )
+-- import Text.Bookbuilder ( Config(..), compile )
+import Text.Bookbuilder
+import Text.Regex.Posix ( (=~) )
 
 -- | Defaults for command-line configuration
 defaultConfig :: Config
@@ -16,9 +20,9 @@ defaultConfig = Config
 	{ confRoot        = "."
 	, confSourceDir   = "src"
 	, confTemplateDir = "templates"
-	, confOutputDir   = "build"
-	, confCombineTool = Nothing
-	, confOmitEmpty   = True
+	, confOutputDest  = ""
+	, confStart       = Location []
+	, confEnd         = Unbounded
 	, confHelp        = False
 	}
 
@@ -34,22 +38,37 @@ options =
 		(ReqArg (\arg opt -> return opt { confTemplateDir = arg }) "DIR")
 		"directory containing template files"
 
-	, Option "o" ["build"]
-		(ReqArg (\arg opt -> return opt { confOutputDir = arg }) "DIR")
-		"destination directory for the compiled book"
+	, Option "o" ["output"]
+		(ReqArg (\arg opt -> return opt { confOutputDest = arg }) "FILE")
+		"destination for the compiled book"
 
-	, Option "c" ["combine"]
-		(ReqArg (\arg opt -> return opt { confCombineTool = Just arg }) "PROG")
-		"use a customized tool to combining files"
+	, Option "f" ["from"]
+		(ReqArg (\arg opt -> parseLoc arg >>= (\ns -> return opt
+			{ confStart = ns })) "LOC")
+		"the section to start at, i.e. 01 or 02.03.02"
 
-	, Option "a" ["all"]
-		(NoArg (\opt -> return opt { confOmitEmpty = True }))
-		"create stubs for empty directories"
+	, Option "t" ["to"]
+		(ReqArg (\arg opt -> parseLoc arg >>= (\ns -> return opt
+			{ confEnd = ns })) "LOC")
+		"the section to compile up to, i.e. 04 or 02.04"
+
+	, Option "n" ["only"]
+		(ReqArg (\arg opt -> parseLoc arg >>= (\ns -> return opt
+			{ confStart = ns
+			, confEnd   = ns})) "LOC")
+		"the section to start and end at, compiling only its subsections"
 
 	, Option "h" ["help"]
 		(NoArg (\opt -> return opt { confHelp = True}))
 		"display this help"
 	]
+
+-- | Parse a LOC into [Integer], i.e. 03.03.01 -> [3, 3, 1]
+parseLoc :: String -> IO [Integer]
+parseLoc arg = if arg =~ "^([0-9]+\\.)*[0-9]+$" :: Bool
+	then return $ map read $ split "." arg
+	else ioError (userError msg) >> return []
+	where msg = "Please enter locations in the form of dot-separated numbers, i.e. 03.01.05"
 
 -- | Main entry point
 -- | Parse and ensure command line arguments
@@ -65,9 +84,9 @@ main = do
 		hPutStrLn stderr $ usageInfo name options
 		exitWith $ ExitFailure 2
 
-	let baseConfig = if (null args)
+	let baseConfig = if null args
 		then defaultConfig
-		else defaultConfig{ confRoot = args !! 0 }
+		else defaultConfig{ confRoot = head args }
 	config <- foldl (>>=) (return baseConfig) actions
 
 	when (confHelp config) $ do
