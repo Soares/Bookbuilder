@@ -1,26 +1,46 @@
 Name:                Bookbuilder
 Version:             0.0
+License:             MIT
+License-file:        LICENSE
+Category:            Writing
+Synopsis:            Build a book directory into a single file
+Description:         Turn structured directory of text files into a single file.
+                     Input formats include anything that pandoc can read.
+                     Templating allows for separation of content and design.
+                     Themes can be used to generate different output styles.
+                     Subsets of the entire book can be built.
+                     The tool can discover the current location in a book and
+                     build only that location.
+Synopsis:            Compile a book in a directory into a single file
 Description:         Tool for building books
 Author:              Nate Soares
 Maintainer:          nate@natesoares.com
 Build-Type:          Simple
-Cabal-Version:       >=1.2
+Cabal-Version:       >=1.6
 
-Library
-    Hs-Source-Dirs: src
-    Build-Depends: base,
+source-repository this
+    type: git
+    location: git://github.com/Soares/Bookbuilder.hs.git
+    tag: 0.0
+
+-- TODO: add bounds dependency
+-- TODO: remove unix dependency
+Executable bookbuilder
+    Build-Depends: base >= 4 && < 5,
                    pandoc >= 1.8,
+                   regex-tdfa >= 1.0,
+                   filepath >= 1.2,
                    monad-loops >= 0.3,
                    split >= 0.1,
-                   missingh >= 1.1,
+                   MissingH >= 1.1,
                    parsec >= 3.1,
-                   bound >= 0.1
-    Exposed-modules: Text.Bookbuilder,
-    Other-modules: Text.Bookbuilder.Templates,
-                   Text.Bookbuilder.Templates.Constraints,
-                   Text.Bookbuilder.Location
-
-Executable bookbuilder
+                   directory >= 1.1,
+                   containers >= 0.4,
+                   mtl >= 2.0
+    if os(windows)
+      Cpp-options: -DWINDOWS
+    else
+      Build-depends: unix >= 2.4
     Hs-Source-Dirs:     src
     Main-Is:            bookbuilder.hs
     Ghc-Options:        -Wall

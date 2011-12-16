@@ -4,8 +4,6 @@ import Control.Monad ( when, unless )
 import Control.Monad.Reader ( ReaderT(runReaderT) )
 import Data.List.Utils ( startswith )
 import Data.List.Split ( splitOneOf )
-import Data.Maybe ( isNothing )
-import Data.String.Utils ( split )
 import System.Console.GetOpt
 import System.Exit ( exitWith, ExitCode (..) )
 import System.Environment ( getArgs, getProgName )
@@ -14,7 +12,7 @@ import System.IO ( hPutStrLn, stderr )
 import Text.Bookbuilder
 import qualified Text.Bookbuilder.Location as Location
 import Text.Bookbuilder.Location ( Location(Location) )
-import Text.Regex.Posix ( (=~) )
+import Text.Regex.TDFA ( (=~) )
 
 -- | Data.List utilities
 intersects :: (Eq a) => [a] -> [a] -> Bool
@@ -92,12 +90,12 @@ parseLoc arg = if arg =~ "^([0-9]+[,._-|])*[0-9]+$" :: Bool
 
 -- | Parse a template theme, ensuring that the name is valid
 parseTheme :: String -> Either IOError String
-parseTheme arg = if bad then Left error else Right arg where
+parseTheme arg = if bad then Left err else Right arg where
 	invalidChars = "0123456789._-|"
 	invalid = "any" : map (:[]) invalidChars
 	bad = null arg || any (`startswith` arg) invalid
 	msg = "Themes may not be blank, start with 'any', nor start with any of: "
-	error = userError $ msg ++ invalidChars
+	err = userError $ msg ++ invalidChars
 
 -- | Main entry point
 -- | Parse and ensure command line arguments

@@ -4,7 +4,7 @@ module Text.Bookbuilder.Template.Constraint
 	, check
 	) where
 
-import Control.Monad ( liftM, liftM2, foldM, join )
+import Control.Monad ( liftM2, join )
 import Control.Applicative ( Applicative, (<*) )
 import Data.Bound ( Bound(Bounded, Unbounded) )
 import Data.Function ( on )
@@ -22,7 +22,7 @@ instance Eq Constraint where (==) = (==) `on` order
 instance Ord Constraint where (<=) = (<=) `on` order
 -- For convenience & debugging only
 instance Show Constraint where
-	show (Constraint Unbounded fn) = "@"
+	show (Constraint Unbounded _) = "@"
 	show (Constraint _ fn) = concatMap (\x -> if fn x then "!" else ":") [1..7]
 
 
@@ -35,7 +35,10 @@ fromName = join $ parse bothParts where
 
 check :: Bound [Constraint] -> [Integer] -> Bool
 check Unbounded _ = True
-check (Bounded (g:gs)) (x:xs) = isMember g x && check (Bounded gs) xs
+check (Bounded xs) ys | (length xs) == (length ys) = check' xs ys
+                      | otherwise = False where
+    check' (g:gs) (z:zs) = isMember g z && check' gs zs
+    check' _ _ = True
 
 
 
@@ -121,9 +124,8 @@ anymarker = mapM char "any"
 
 
 -- Names for simple characters
-hyphen, pipe, dot, numchar :: GenParser Char st Char
+hyphen, pipe, numchar, underscore :: GenParser Char st Char
 hyphen = char '-'
 pipe = oneOf "|"
-dot = char '.'
 underscore = char '_'
 numchar = oneOf ['0'..'9']

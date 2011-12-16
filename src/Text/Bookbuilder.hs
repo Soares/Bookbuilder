@@ -6,17 +6,17 @@ module Text.Bookbuilder where
 
 -- TODO: Check how trailing newlines work
 
-import Control.Monad ( liftM, liftM2, liftM3, filterM, when )
-import Control.Monad.Loops ( andM, orM )
+import Control.Monad ( liftM, liftM2, liftM3, filterM )
+import Control.Monad.Loops ( andM )
 import Control.Monad.Trans ( liftIO )
-import Control.Monad.Reader ( ReaderT, asks, local )
+import Control.Monad.Reader ( ReaderT, asks )
 import Data.Char ( toLower )
 import Data.Functor ( (<$>) )
-import Data.List ( sort, nub )
-import Data.List.Split ( split, splitOn, startsWithOneOf )
-import Data.List.Utils ( startswith, endswith )
-import Data.Maybe ( fromJust, isNothing, catMaybes, fromMaybe )
-import Data.Tree ( Tree(Node), Forest )
+import Data.List ( sort )
+import Data.List.Split ( split, startsWithOneOf )
+import Data.List.Utils ( startswith )
+import Data.Maybe ( fromJust, catMaybes, fromMaybe )
+import Data.Tree ( Tree(Node) )
 import Data.String.Utils ( join )
 import System.Directory
 	( getCurrentDirectory
@@ -33,17 +33,15 @@ import System.FilePath.Posix
 	, takeExtension
 	, addExtension
 	, splitPath
-	, joinPath
 	, takeFileName
 	, dropTrailingPathSeparator
-	, addTrailingPathSeparator
 	, takeDirectory )
 import System.Posix.Files
 	( getFileStatus
 	, fileSize )
 import Text.Pandoc
 	( Pandoc(Pandoc)
-	, Meta(Meta, docTitle)
+	, Meta(Meta)
 	, Inline(Str)
 	, readers
 	, writeLaTeX
@@ -94,7 +92,7 @@ defaultDest conf = destName title (confStart conf) (confEnd conf)
 	where title = parseTitle $ confRoot conf
 
 destName :: String -> Location -> Location -> String
-destName t lo hi = join "-" (t:parts (unwrap lo) (unwrap hi)) where
+destName t wlo whi = join "-" (t:parts (unwrap wlo) (unwrap whi)) where
 	unwrap = Location.list
 	parts [] [] = []
 	parts lo hi = if lo == hi then [sep lo] else [sep lo, sep hi]
@@ -115,14 +113,6 @@ ifM p x y = p >>= (\r -> if r then x else y)
 
 notM :: Monad m => m Bool -> m Bool
 notM = liftM not
-
-
-
--- | Data.List utilities            ====================================
-
-dropLast :: [a] -> [a]
-dropLast (x:[]) = []
-dropLast (x:xs) = x:dropLast xs
 
 
 
@@ -235,10 +225,9 @@ findTemplate loc (t:ts) | Template.matches t $ Location.list loc = Just t
 
 getTemplate :: FilePath -> Configged IO Template
 getTemplate path = do
-	templates <- templateList
+	listing <- templateList
 	location <- getLocation path
-	fallback <- Template.fallback <$> asks confTheme
-	return $ fromMaybe fallback $ findTemplate location templates
+	return $ fromMaybe Template.fallback $ findTemplate location listing
 
 
 
@@ -258,9 +247,11 @@ detect :: FilePath -> [FilePath] -> IO (FilePath, Location)
 detect start lookFor = do
 	normpath <- canonicalize start
 	result <- search normpath []
+	-- The first index will be for the "confSourceDir" so we drop it
+	-- TODO: don't assume that 'src' is only one level.
 	case result of
 		Nothing -> return (normpath, Location [])
-		Just (root, srcnum:loc) -> return (root, Location loc)
+		Just (root, loc) -> return (root, Location $ drop 1 loc)
 	where
 		search "/" _ = return Nothing
 		search path xs = ifM (checksOut path)
@@ -290,7 +281,6 @@ hasContent _ = return True
 
 isInRange :: Tree FilePath -> Configged IO Bool
 isInRange (Node t _) = liftM3 contains (asks confStart) (asks confEnd) (getLocation t)
-
 
 
 -- | Bookbuilder compilation        ====================================

@@ -5,7 +5,6 @@ module Text.Bookbuilder.Template
 	, fallback
 	) where
 
-import Control.Monad ( liftM, liftM2, foldM )
 import Data.Bound ( Bound(Unbounded) )
 import Data.Function ( on )
 import Text.Bookbuilder.Template.Constraint ( Constraint, check, fromName )
@@ -25,24 +24,24 @@ data Template = Template
 instance Eq Template where (==) = (==) `on` name
 instance Ord Template where (<=) = (<=) `on` constraints
 
-fallback :: String -> Template
-fallback theme = Template { name = "fallback"
-                          , theme = theme
-						  , source = "$body$\n"
-						  , extension = ".tex"
-						  , constraints = Unbounded }
+fallback :: Template
+fallback = Template { name = "fallback"
+                    , theme = "fallback"
+					, source = "$body$\n"
+					, extension = ".tex"
+					, constraints = Unbounded }
 
 matches :: Template -> [Integer] -> Bool
 matches = check . constraints
 
 fromFile :: FilePath -> IO (Maybe Template)
 fromFile path = handle $ fromName $ takeFileName path where
-	handle (Left error) = print error >> return Nothing
-	handle (Right (cs, tail)) = catch attempt fail where
+	handle (Left err) = print err >> return Nothing
+	handle (Right (cs, leftover)) = catch attempt shortCircuit where
 		attempt = fmap (Just . create) (readFile path)
-		fail err = print err >> return Nothing
-		create source = Template { name = takeFileName path
-		                         , source = source
-		                         , theme = dropExtension tail
-		                         , extension = takeExtension tail
-		                         , constraints = cs }
+		shortCircuit err = print err >> return Nothing
+		create contents = Template { name = takeFileName path
+		                           , source = contents
+		                           , theme = dropExtension leftover
+		                           , extension = takeExtension leftover
+		                           , constraints = cs }

@@ -6,7 +6,7 @@ module Text.Bookbuilder.Location
 
 import Control.Monad ( liftM, liftM2, foldM )
 import Data.String.Utils ( join )
-import Text.Regex.Posix ( (=~) )
+import Text.Regex.TDFA ( (=~) )
 
 data Location = Location { list :: [Integer] }
 
