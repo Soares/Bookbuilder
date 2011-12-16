@@ -3,14 +3,17 @@ module Main where
 import Control.Monad ( when, unless )
 import Control.Monad.Reader ( ReaderT(runReaderT) )
 import Data.List.Utils ( startswith )
+import Data.List.Split ( splitOneOf )
 import Data.Maybe ( isNothing )
 import Data.String.Utils ( split )
 import System.Console.GetOpt
 import System.Exit ( exitWith, ExitCode (..) )
 import System.Environment ( getArgs, getProgName )
 import System.IO ( hPutStrLn, stderr )
--- import Text.Bookbuilder ( Config(..), compile ) TODO
+-- import Text.Bookbuilder ( Config(..), compile, normalize )
 import Text.Bookbuilder
+import qualified Text.Bookbuilder.Location as Location
+import Text.Bookbuilder.Location ( Location(Location) )
 import Text.Regex.Posix ( (=~) )
 
 -- | Data.List utilities
@@ -23,11 +26,11 @@ defaultConfig = Config
 	{ confRoot        = ""
 	, confSourceDir   = "src"
 	, confTemplateDir = "templates"
-	, confTheme       = "common"
+	, confTheme       = "default"
 	, confOutputDest  = Nothing
 	, confDetect      = False
-	, confStart       = []
-	, confEnd         = []
+	, confStart       = Location.empty
+	, confEnd         = Location.empty
 	, confHelp        = False
 	}
 
@@ -44,9 +47,9 @@ options =
 		"directory containing template files"
 
 	, Option "t" ["theme"]
-		(ReqArg (\arg opt -> do
-			parseTheme arg
-			return opt { confTheme = arg }) "THEME")
+		(ReqArg (\arg opt -> case parseTheme arg of
+			Left err -> ioError err
+			Right theme -> return opt{ confTheme = theme }) "THEME")
 		"the template theme to use"
 
 	, Option "o" ["output"]
@@ -57,24 +60,22 @@ options =
 		(NoArg (\opt -> return opt{ confDetect = True }))
 		"detect the current book and location"
 
-	, Option "m" ["smart"]
-		(NoArg (\opt -> return opt{ confOutputDest = Just "" }))
-		"determine the output name from the title and the range"
-
 	, Option "b" ["begin"]
-		(ReqArg (\arg opt -> parseLoc arg >>= (\ns -> return opt
-			{ confStart = ns })) "LOC")
-		"the section to start at, i.e. 01 or 02.03.02"
+		(ReqArg (\arg opt -> case parseLoc arg of
+			Left err -> ioError err
+			Right loc -> return opt{ confStart=loc }) "LOC")
+		"the section to start at, i.e. 01 or 2_3_1"
 
 	, Option "e" ["end"]
-		(ReqArg (\arg opt -> parseLoc arg >>= (\ns -> return opt
-			{ confEnd = ns })) "LOC")
-		"the section to compile up to, i.e. 04 or 02.04"
+		(ReqArg (\arg opt -> case parseLoc arg of
+			Left err -> ioError err
+			Right loc -> return opt{ confEnd=loc }) "LOC")
+		"the section to compile up to, i.e. 4 or 02_04"
 
 	, Option "n" ["only"]
-		(ReqArg (\arg opt -> parseLoc arg >>= (\ns -> return opt
-			{ confStart = ns
-			, confEnd   = ns})) "LOC")
+		(ReqArg (\arg opt -> case parseLoc arg of
+			Left err -> ioError err
+			Right loc -> return opt{ confStart=loc, confEnd=loc }) "LOC")
 		"the section to start and end at, compiling only its subsections"
 
 	, Option "h" ["help"]
@@ -82,21 +83,21 @@ options =
 		"display this help"
 	]
 
--- | Parse a LOC into [Integer], i.e. 03.03.01 -> [3, 3, 1]
-parseLoc :: String -> IO [Integer]
-parseLoc arg = if arg =~ "^([0-9]+\\.)*[0-9]+$" :: Bool
-	then return $ map read $ split "." arg
-	else ioError (userError msg) >> return []
-	where msg = "Please enter locations in the form of dot-separated numbers, i.e. 03.01.05"
+-- | Parse a LOC into Location, i.e. 3_3_1 -> [3, 3, 1]
+parseLoc :: String -> Either IOError Location
+parseLoc arg = if arg =~ "^([0-9]+[,._-|])*[0-9]+$" :: Bool
+	then Right $ Location $ map read $ splitOneOf ",._-|" arg
+	else Left $ userError msg where
+	msg = "Please enter locations in the form of underscore-separated numbers, i.e. 3_1_5"
 
-parseTheme :: String -> IO ()
-parseTheme arg = do
-	let msg = "Themes may not be blank, start with 'any', nor contain any of: "
-	let invalid = "0123456789_-'~."
-	let bad = (startswith "any" arg) ||
-			  (arg `intersects` invalid) ||
-			  (null arg)
-	when bad (ioError $ userError $ msg ++ invalid)
+-- | Parse a template theme, ensuring that the name is valid
+parseTheme :: String -> Either IOError String
+parseTheme arg = if bad then Left error else Right arg where
+	invalidChars = "0123456789._-|"
+	invalid = "any" : map (:[]) invalidChars
+	bad = null arg || any (`startswith` arg) invalid
+	msg = "Themes may not be blank, start with 'any', nor start with any of: "
+	error = userError $ msg ++ invalidChars
 
 -- | Main entry point
 -- | Parse and ensure command line arguments

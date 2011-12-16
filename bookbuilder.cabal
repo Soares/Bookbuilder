@@ -13,10 +13,12 @@ Library
                    monad-loops >= 0.3,
                    split >= 0.1,
                    missingh >= 1.1,
+                   parsec >= 3.1,
                    bound >= 0.1
     Exposed-modules: Text.Bookbuilder,
     Other-modules: Text.Bookbuilder.Templates,
-                   Text.Bookbuilder.Templates.Constraints
+                   Text.Bookbuilder.Templates.Constraints,
+                   Text.Bookbuilder.Location
 
 Executable bookbuilder
     Hs-Source-Dirs:     src
