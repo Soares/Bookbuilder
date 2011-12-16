@@ -1,0 +1,25 @@
+Name:                Bookbuilder
+Version:             0.0
+Description:         Tool for building books
+Author:              Nate Soares
+Maintainer:          nate@natesoares.com
+Build-Type:          Simple
+Cabal-Version:       >=1.2
+
+Library
+    Hs-Source-Dirs: src
+    Build-Depends: base,
+                   pandoc >= 1.8,
+                   monad-loops >= 0.3,
+                   split >= 0.1,
+                   missingh >= 1.1,
+                   bound >= 0.1
+    Exposed-modules: Text.Bookbuilder,
+    Other-modules: Text.Bookbuilder.Templates,
+                   Text.Bookbuilder.Templates.Constraints
+
+Executable bookbuilder
+    Hs-Source-Dirs:     src
+    Main-Is:            bookbuilder.hs
+    Ghc-Options:        -Wall
+    Ghc-Prof-Options:   -auto-all
