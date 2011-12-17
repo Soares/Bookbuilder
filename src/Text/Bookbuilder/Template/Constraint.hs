@@ -35,7 +35,7 @@ fromName = join $ parse bothParts where
 
 check :: Bound [Constraint] -> [Integer] -> Bool
 check Unbounded _ = True
-check (Bounded xs) ys | (length xs) == (length ys) = check' xs ys
+check (Bounded xs) ys | length xs == length ys = check' xs ys
                       | otherwise = False where
     check' (g:gs) (z:zs) = isMember g z && check' gs zs
     check' _ _ = True

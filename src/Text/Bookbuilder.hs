@@ -35,7 +35,6 @@ import System.Directory
 import System.FilePath.Posix
 	( (</>)
 	, (<.>)
-	, isDrive
 	, isRelative
 	, makeRelative
 	, dropExtension
@@ -91,9 +90,9 @@ src :: Config -> FilePath
 src conf = normalise $ confRoot conf </> confSourceDir conf
 
 templates :: Config -> Maybe FilePath
-templates conf = normalise . (root </>) <$> templates where
+templates conf = normalise . (root </>) <$> dir where
 	root = confRoot conf
-	templates = confTemplateDir conf
+	dir = confTemplateDir conf
 
 dest :: FilePath -> Configged IO FilePath
 dest path = do
@@ -199,14 +198,12 @@ withDefaultTitle doc _ = doc
 -- | Bookbuilder file locations     ====================================
 
 getLocation :: FilePath -> Configged IO Location
-getLocation path = do
-	path <- (liftM2 makeRelative) (asks src) (return path)
-	return $ pathLocation path
+getLocation = (pathLocation <$>) . liftM2 makeRelative (asks src) . return
 
 pathLocation :: FilePath -> Location
 pathLocation = Location . map pathIndex . splitPath where
 	pathIndex = takeInt . takeFileName . dropTrailingPathSeparator
-	takeInt = fromMaybe 1 . first . (map fst) . reads
+	takeInt = fromMaybe 1 . first . map fst . reads
 	first xs = if null xs then Nothing else Just $ head xs
 
 
@@ -253,9 +250,11 @@ getTemplate path = do
 confError :: String -> Maybe FilePath -> IOError
 confError msg = mkIOError userErrorType msg Nothing
 
+errConfNoTemplates :: Config -> IOError
 errConfNoTemplates = confError msg . templates
 	where msg = "Can not find template directory" 
 
+errConfNotABook :: Config -> IOError
 errConfNotABook = confError msg . Just . src
 	where msg = "Can not find book source"
 

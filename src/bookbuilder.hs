@@ -3,6 +3,8 @@ module Main where
 -- TODO: Author support
 -- TODO: Non-LaTeX template support
 
+import Prelude hiding ( catch )
+import Control.Exception ( catch )
 import Control.Monad ( when, unless )
 import Control.Monad.Reader ( ReaderT(runReaderT) )
 import Data.List.Utils ( startswith )
@@ -13,9 +15,7 @@ import System.IO ( hPutStrLn, stderr )
 import System.IO.Error
     ( isUserError
     , ioeGetLocation
-    , ioeGetFileName
-    , ioeGetHandle
-    , ioeGetErrorType )
+    , ioeGetFileName )
 import Text.Bookbuilder ( Config(..), compile, normalize )
 import Text.Bookbuilder.Location ( Location(Location) )
 
@@ -90,7 +90,7 @@ options =
 parseLoc :: String -> Either IOError Location
 parseLoc arg = case reads arg of
     [] -> Left $ userError msg
-    ((x,""):xs) -> Right x
+    ((x,""):_) -> Right x
     _ -> Left $ userError msg
     where msg = "Please enter locations in the form of underscore-separated numbers, i.e. 3_1_5"
 
@@ -105,10 +105,11 @@ parseTheme arg = if bad then Left err else Right arg where
 
 showError :: IOError -> IO ()
 showError err | isUserError err = do
-    putStr $ "Error: " ++ (ioeGetLocation err)
+    putStr $ "Error: " ++ ioeGetLocation err
     case ioeGetFileName err of
         Nothing -> putStr "\n"
         Just x -> putStrLn $ " (" ++ show x ++ ")"
+              | otherwise = print err
 
 -- | Main entry point
 -- | Parse and ensure command line arguments

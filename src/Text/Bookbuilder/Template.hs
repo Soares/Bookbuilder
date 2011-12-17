@@ -5,6 +5,8 @@ module Text.Bookbuilder.Template
 	, fallback
 	) where
 
+import Prelude hiding ( catch )
+import Control.Exception ( catch )
 import Data.Bound ( Bound(Unbounded) )
 import Data.Function ( on )
 import Text.Bookbuilder.Template.Constraint ( Constraint, check, fromName )
@@ -39,6 +41,7 @@ fromFile path = handle $ fromName $ takeFileName path where
 	handle (Left err) = print err >> return Nothing
 	handle (Right (cs, leftover)) = catch attempt shortCircuit where
 		attempt = fmap (Just . create) (readFile path)
+		shortCircuit :: IOError -> IO (Maybe Template)
 		shortCircuit err = print err >> return Nothing
 		create contents = Template { name = takeFileName path
 		                           , source = contents

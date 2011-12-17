@@ -3,10 +3,8 @@ module Text.Bookbuilder.Location
 	, separators
 	) where
 
-import Data.Maybe ( fromMaybe )
-import Data.List ( intersperse )
 import Data.List.Split ( splitOn )
-import Data.List.Utils ( join, startswith )
+import Data.List.Utils ( join )
 import Data.String.Utils ( lstrip )
 
 data Location = Location { list :: [Integer] }
@@ -15,14 +13,15 @@ data Location = Location { list :: [Integer] }
 -- Think of further depth in the Location as refinement.
 -- For real tests of equality, check the underlying list.
 instance Eq Location where
-	xs == ys = (common xs ys) == (common ys xs)
+	xs == ys = common xs ys == common ys xs
 instance Ord Location where
-	xs <= ys = (common xs ys) <= (common ys xs)
+	xs <= ys = common xs ys <= common ys xs
 
 common :: Location -> Location -> [Integer]
 common xs ys = take enough $ list xs
 	where enough = min (length $ list xs) (length $ list ys)
 
+separators :: String
 separators = " .,;:|-_"
 
 -- | Location reading and showing
@@ -38,13 +37,13 @@ instance Read Location where
 
 -- Locations can be in angle brackets or may be unadorned
 readLocation :: ReadS Location
-readLocation s = [(Location list, rest) | ("<", t) <- lex s
-                                        , (list, '>':rest) <- readInts t]
-                 ++ [(Location list, rest) | (list, rest) <- readInts s]
+readLocation s = [(Location xs, rest) | ("<", t) <- lex s
+                                      , (xs, '>':rest) <- readInts t]
+                 ++ [(Location xs, rest) | (xs, rest) <- readInts s]
 
 readInts :: ReadS [Integer]
 readInts s = [(x : xs, rest) | (x, t) <- readInt s
-                             , (sep, u) <- readSep t
+                             , (_, u) <- readSep t
                              , (xs, rest) <- readInts u]
              ++ [(x : xs, rest) | (x, t) <- readInt s
 			                    , (xs, rest) <- readInts t]
@@ -58,7 +57,7 @@ readInt s = [(x, rest++leftover) | (str, leftover) <- dotlex s
 
 readSep :: ReadS String
 readSep s = [(sep, rest) | (sep, rest) <- dotlex s
-                         , sep `elem` (map return separators)]
+                         , sep `elem` map return separators]
 
 -- A version of 'lex' that splits on dots as well, allowing us to parse
 -- something like "1.2.3" as multiple numbers
