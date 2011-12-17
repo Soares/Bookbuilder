@@ -1,12 +1,16 @@
-module Text.Bookbuilder where
---	( Config(..)
---	, normalize
---	, compile
---	) where
+module Text.Bookbuilder
+	( Config(..)
+	, normalize
+	, compile
+	) where
 
--- TODO: Check how trailing newlines work
+-- TODO: Allow src to be more than one level
+-- TODO: Test on only file
+-- TODO: Test on no src
+-- TODO: Test on leveld/src
+-- TODO: x <- a; y <- b IS NOT LAZY
 
-import Control.Monad ( liftM, liftM2, liftM3, filterM )
+import Control.Monad ( liftM2, liftM3, filterM, unless )
 import Control.Monad.Loops ( andM )
 import Control.Monad.Trans ( liftIO )
 import Control.Monad.Reader ( ReaderT, asks )
@@ -15,7 +19,11 @@ import Data.Functor ( (<$>) )
 import Data.List ( sort )
 import Data.List.Split ( split, startsWithOneOf )
 import Data.List.Utils ( startswith )
-import Data.Maybe ( fromJust, catMaybes, fromMaybe )
+import Data.Maybe
+	( fromJust
+	, catMaybes
+	, fromMaybe
+	, isNothing )
 import Data.Tree ( Tree(Node) )
 import Data.String.Utils ( join )
 import System.Directory
@@ -25,17 +33,22 @@ import System.Directory
 	, doesDirectoryExist
 	, doesFileExist )
 import System.FilePath.Posix
-	( combine
+	( (</>)
+	, (<.>)
+	, isDrive
 	, isRelative
 	, makeRelative
 	, dropExtension
 	, hasExtension
 	, takeExtension
-	, addExtension
+	, normalise
 	, splitPath
 	, takeFileName
 	, dropTrailingPathSeparator
 	, takeDirectory )
+import System.IO.Error
+	( mkIOError
+	, userErrorType )
 import System.Posix.Files
 	( getFileStatus
 	, fileSize )
@@ -48,6 +61,7 @@ import Text.Pandoc
 	, defaultParserState
 	, defaultWriterOptions
 	, WriterOptions(..) )
+import Text.Printf ( printf )
 
 import qualified Text.Bookbuilder.Location as Location
 import Text.Bookbuilder.Location ( Location(Location) )
@@ -59,7 +73,7 @@ import Text.Bookbuilder.Template ( Template )
 data Config = Config
 	{ confRoot        :: FilePath
 	, confSourceDir   :: FilePath
-	, confTemplateDir :: FilePath
+	, confTemplateDir :: Maybe FilePath
 	, confTheme       :: String
 	, confOutputDest  :: Maybe FilePath
 	, confDetect      :: Bool
@@ -69,22 +83,24 @@ data Config = Config
 	} deriving (Eq, Show)
 
 
--- | Helper data types
+-- | Configuration helpers
 type Configged = ReaderT Config
 
 -- | Configuration local structure
 src :: Config -> FilePath
-src conf = combine (confRoot conf) (confSourceDir conf)
+src conf = normalise $ confRoot conf </> confSourceDir conf
 
-templates :: Config -> FilePath
-templates conf = combine (confRoot conf) (confTemplateDir conf)
+templates :: Config -> Maybe FilePath
+templates conf = normalise . (root </>) <$> templates where
+	root = confRoot conf
+	templates = confTemplateDir conf
 
 dest :: FilePath -> Configged IO FilePath
 dest path = do
-	base <- (`combine` path) <$> asks confRoot
+	base <- (</> path) <$> asks confRoot
 	isDir <- liftIO $ doesDirectoryExist base
 	smartName <- asks defaultDest
-	let file = if null path || isDir then combine base smartName else base
+	let file = if null path || isDir then base </> smartName else base
 	return $ offerExtension "tex" file
 
 defaultDest :: Config -> FilePath
@@ -111,15 +127,12 @@ contains lo hi x = x >= lo && x <= hi
 ifM :: Monad m => m Bool -> m a -> m a -> m a
 ifM p x y = p >>= (\r -> if r then x else y)
 
-notM :: Monad m => m Bool -> m Bool
-notM = liftM not
-
 
 
 -- | System.FilePath utilities      ====================================
 
 ls :: FilePath -> IO [FilePath]
-ls path = (map (combine path) . sort . filter isVisible) <$>
+ls path = (map (path </>) . sort . filter isVisible) <$>
 	getDirectoryContents path
 
 isVisible :: FilePath -> Bool
@@ -133,11 +146,11 @@ fileHasData file = fmap ((> 0) . fileSize) (getFileStatus file)
 
 offerExtension :: String -> FilePath -> FilePath
 offerExtension ext p | hasExtension p = p
-                     | otherwise = addExtension p ext
+                     | otherwise = p <.> ext
 
 canonicalize :: FilePath -> IO FilePath
 canonicalize = (canonicalizePath =<<) . unrel where
-	unrel p | isRelative p = (`combine` p) <$> getCurrentDirectory
+	unrel p | isRelative p = (</> p) <$> getCurrentDirectory
 	        | otherwise = return p
 
 
@@ -170,6 +183,7 @@ pandocify path contents = do
 		-- TODO: add writer variables
 		--     parent, book, count, total,
 		--     N, parentN, countN, totalN
+		--     fontsize, author, etc.
 		{ writerStandalone       = True
 		, writerTemplate         = template
 		, writerChapters         = True }
@@ -186,14 +200,14 @@ withDefaultTitle doc _ = doc
 
 getLocation :: FilePath -> Configged IO Location
 getLocation path = do
-	root <- asks confRoot
-	source <- asks src
-	let parts = splitPath $ makeRelative source path
-	let list = if root == path then [] else map Location.fromName parts
-	return $ Location list
+	path <- (liftM2 makeRelative) (asks src) (return path)
+	return $ pathLocation path
 
-pathIndex :: FilePath -> Integer
-pathIndex = Location.fromName . takeFileName . dropTrailingPathSeparator
+pathLocation :: FilePath -> Location
+pathLocation = Location . map pathIndex . splitPath where
+	pathIndex = takeInt . takeFileName . dropTrailingPathSeparator
+	takeInt = fromMaybe 1 . first . (map fst) . reads
+	first xs = if null xs then Nothing else Just $ head xs
 
 
 
@@ -202,7 +216,8 @@ pathIndex = Location.fromName . takeFileName . dropTrailingPathSeparator
 parseTitle :: FilePath -> String
 parseTitle = deCamel . dropExtension . dropIndex . filePart where
 	filePart = takeFileName . dropTrailingPathSeparator
-	dropIndex = dropWhile (`elem` "_.-0123456789")
+	dropable = Location.separators ++ ['0'..'9']
+	dropIndex = dropWhile (`elem` dropable)
 	deCamel = join " " . split (startsWithOneOf ['A'..'Z'])
 
 
@@ -210,13 +225,15 @@ parseTitle = deCamel . dropExtension . dropIndex . filePart where
 -- | Bookbuilder templates          ====================================
 
 templateList :: Configged IO [Template]
-templateList = do
-	dir <- asks templates
-	files <- liftIO $ ls dir
-	unfiltered <- liftIO $ mapM Template.fromFile files
-	let candidates = catMaybes unfiltered
-	let isOurs t = (Template.theme t ==) <$> asks confTheme
-	sort <$> filterM isOurs candidates
+templateList = asks templates >>= templateList' where
+	templateList' :: Maybe FilePath -> Configged IO [Template]
+	templateList' Nothing = return []
+	templateList' (Just dir) = do
+		files <- liftIO $ ls dir
+		unfiltered <- liftIO $ mapM Template.fromFile files
+		let candidates = catMaybes unfiltered
+		let isOurs t = (Template.theme t ==) <$> asks confTheme
+		sort <$> filterM isOurs candidates
 
 findTemplate :: Location -> [Template] -> Maybe Template
 findTemplate _ [] = Nothing
@@ -231,33 +248,72 @@ getTemplate path = do
 
 
 
+-- | Bookbuilder user errors        ====================================
+
+confError :: String -> Maybe FilePath -> IOError
+confError msg = mkIOError userErrorType msg Nothing
+
+errConfNoTemplates = confError msg . templates
+	where msg = "Can not find template directory" 
+
+errConfNotABook = confError msg . Just . src
+	where msg = "Can not find book source"
+
+
+
 -- | Bookbuilder file discovery     ====================================
 
 normalize :: Config -> IO Config
-normalize conf = if not $ confDetect conf then localized else do
-	(root, range) <- detect (confRoot conf) [confSourceDir conf]
-	return (with root){ confStart=range, confEnd=range } where
-		localized = with <$> canonicalize (confRoot conf)
-		with root = conf{ confRoot = root }
+normalize = (check =<<) . (setTemplates =<<) . setRoot
+
+check :: Config -> IO Config
+check conf = do
+	haveSources <- exists $ src conf
+	unless haveSources (ioError $ errConfNotABook conf)
+	haveTemplates <- existsIfJust $ templates conf
+	unless haveTemplates (ioError $ errConfNoTemplates conf)
+	return conf
+	where existsIfJust = fromMaybe (return True) . (exists <$>)
+
+setRoot :: Config -> IO Config
+setRoot conf = if confDetect conf then detected else canonized where
+	getCanonRoot = canonicalize $ confRoot conf
+	detected = do
+		old <- getCanonRoot
+		(root, range) <- detect old (confSourceDir conf)
+		return (set root){ confStart=range, confEnd=range }
+	canonized = set <$> getCanonRoot
+	set root = conf{ confRoot = root }
+
+setTemplates :: Config -> IO Config
+setTemplates conf = do
+	let given = confTemplateDir conf
+	defaultWouldWork <- exists $ confRoot conf </> "templates"
+	return $ if isNothing given && defaultWouldWork
+		then conf{ confTemplateDir = Just "templates" }
+		else conf
 
 -- | Expand the given directory to an absolute directory, then walk up the
 -- | path looking for a directory that has the requisite subdirectories.
 -- | Fall back to the absolute path on failure.
-detect :: FilePath -> [FilePath] -> IO (FilePath, Location)
-detect start lookFor = do
-	normpath <- canonicalize start
-	result <- search normpath []
-	-- The first index will be for the "confSourceDir" so we drop it
-	-- TODO: don't assume that 'src' is only one level.
-	case result of
-		Nothing -> return (normpath, Location [])
-		Just (root, loc) -> return (root, Location $ drop 1 loc)
-	where
-		search "/" _ = return Nothing
-		search path xs = ifM (checksOut path)
-			(return $ Just (path, xs))
-			(search (takeDirectory path) (pathIndex path : xs))
-		checksOut path = andM $ map (exists . combine path) lookFor
+detect :: FilePath -> FilePath -> IO (FilePath, Location)
+detect start sourceDir = do
+	cur <- canonicalize start
+	root <- unwrap =<< cur `ancestorWith` sourceDir
+	let sources = root </> sourceDir
+	return (root, pathLocation $ makeRelative sources cur) where
+		unwrap (Just root) = return root
+		unwrap Nothing = ioError $ userError $ printf msg start sourceDir
+		msg = "Could not detect book from %s (looked for %s)"
+
+ancestorWith :: FilePath -> FilePath -> IO (Maybe FilePath)
+ancestorWith path child = checksOut >>= ancestorWith' where
+	checksOut = exists $ path </> child
+	canAscend = path /= takeDirectory path
+	next = takeDirectory path
+	ancestorWith' True = return $ Just path
+	ancestorWith' False | canAscend = ancestorWith next child
+	                    | otherwise = return Nothing
 
 -- | Build a tree out of the filepaths in the book's source directory
 buildTree :: FilePath -> IO (Tree FilePath)

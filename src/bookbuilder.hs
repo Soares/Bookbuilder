@@ -1,18 +1,23 @@
 module Main where
 
+-- TODO: Author support
+-- TODO: Non-LaTeX template support
+
 import Control.Monad ( when, unless )
 import Control.Monad.Reader ( ReaderT(runReaderT) )
 import Data.List.Utils ( startswith )
-import Data.List.Split ( splitOneOf )
 import System.Console.GetOpt
 import System.Exit ( exitWith, ExitCode (..) )
 import System.Environment ( getArgs, getProgName )
 import System.IO ( hPutStrLn, stderr )
--- import Text.Bookbuilder ( Config(..), compile, normalize )
-import Text.Bookbuilder
-import qualified Text.Bookbuilder.Location as Location
+import System.IO.Error
+    ( isUserError
+    , ioeGetLocation
+    , ioeGetFileName
+    , ioeGetHandle
+    , ioeGetErrorType )
+import Text.Bookbuilder ( Config(..), compile, normalize )
 import Text.Bookbuilder.Location ( Location(Location) )
-import Text.Regex.TDFA ( (=~) )
 
 -- | Data.List utilities
 intersects :: (Eq a) => [a] -> [a] -> Bool
@@ -23,12 +28,12 @@ defaultConfig :: Config
 defaultConfig = Config
 	{ confRoot        = ""
 	, confSourceDir   = "src"
-	, confTemplateDir = "templates"
+	, confTemplateDir = Nothing
 	, confTheme       = "default"
 	, confOutputDest  = Nothing
 	, confDetect      = False
-	, confStart       = Location.empty
-	, confEnd         = Location.empty
+	, confStart       = Location []
+	, confEnd         = Location []
 	, confHelp        = False
 	}
 
@@ -41,7 +46,7 @@ options =
 		"directory containing the book source files"
 
 	, Option "p" ["templates"]
-		(ReqArg (\arg opt -> return opt { confTemplateDir = arg }) "DIR")
+		(ReqArg (\arg opt -> return opt { confTemplateDir = Just arg }) "DIR")
 		"directory containing template files"
 
 	, Option "t" ["theme"]
@@ -83,10 +88,11 @@ options =
 
 -- | Parse a LOC into Location, i.e. 3_3_1 -> [3, 3, 1]
 parseLoc :: String -> Either IOError Location
-parseLoc arg = if arg =~ "^([0-9]+[,._-|])*[0-9]+$" :: Bool
-	then Right $ Location $ map read $ splitOneOf ",._-|" arg
-	else Left $ userError msg where
-	msg = "Please enter locations in the form of underscore-separated numbers, i.e. 3_1_5"
+parseLoc arg = case reads arg of
+    [] -> Left $ userError msg
+    ((x,""):xs) -> Right x
+    _ -> Left $ userError msg
+    where msg = "Please enter locations in the form of underscore-separated numbers, i.e. 3_1_5"
 
 -- | Parse a template theme, ensuring that the name is valid
 parseTheme :: String -> Either IOError String
@@ -96,6 +102,13 @@ parseTheme arg = if bad then Left err else Right arg where
 	bad = null arg || any (`startswith` arg) invalid
 	msg = "Themes may not be blank, start with 'any', nor start with any of: "
 	err = userError $ msg ++ invalidChars
+
+showError :: IOError -> IO ()
+showError err | isUserError err = do
+    putStr $ "Error: " ++ (ioeGetLocation err)
+    case ioeGetFileName err of
+        Nothing -> putStr "\n"
+        Just x -> putStrLn $ " (" ++ show x ++ ")"
 
 -- | Main entry point
 -- | Parse and ensure command line arguments
@@ -120,4 +133,4 @@ main = do
 		putStrLn $ usageInfo name options
 		exitWith ExitSuccess
 	
-	runReaderT compile =<< normalize config
+	catch (runReaderT compile =<< normalize config) showError
