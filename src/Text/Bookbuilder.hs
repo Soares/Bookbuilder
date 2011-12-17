@@ -11,7 +11,7 @@ module Text.Bookbuilder
 -- TODO: x <- a; y <- b IS NOT LAZY
 
 import Control.Monad ( liftM2, liftM3, filterM, unless )
-import Control.Monad.Loops ( andM )
+import Control.Monad.Loops ( andM, allM )
 import Control.Monad.Trans ( liftIO )
 import Control.Monad.Reader ( ReaderT, asks )
 import Data.Char ( toLower )
@@ -279,7 +279,8 @@ setRoot conf = if confDetect conf then detected else canonized where
 	getCanonRoot = canonicalize $ confRoot conf
 	detected = do
 		old <- getCanonRoot
-		(root, range) <- detect old (confSourceDir conf)
+		let requisites = catMaybes [confTemplateDir conf]
+		(root, range) <- detect old (confSourceDir conf) requisites
 		return (set root){ confStart=range, confEnd=range }
 	canonized = set <$> getCanonRoot
 	set root = conf{ confRoot = root }
@@ -295,23 +296,24 @@ setTemplates conf = do
 -- | Expand the given directory to an absolute directory, then walk up the
 -- | path looking for a directory that has the requisite subdirectories.
 -- | Fall back to the absolute path on failure.
-detect :: FilePath -> FilePath -> IO (FilePath, Location)
-detect start sourceDir = do
+detect :: FilePath -> FilePath -> [FilePath] -> IO (FilePath, Location)
+detect start sourceDir requisites = do
 	cur <- canonicalize start
-	root <- unwrap =<< cur `ancestorWith` sourceDir
+	root <- unwrap =<< cur `ancestorWith` (sourceDir:requisites)
 	let sources = root </> sourceDir
 	return (root, pathLocation $ makeRelative sources cur) where
 		unwrap (Just root) = return root
 		unwrap Nothing = ioError $ userError $ printf msg start sourceDir
 		msg = "Could not detect book from %s (looked for %s)"
 
-ancestorWith :: FilePath -> FilePath -> IO (Maybe FilePath)
-ancestorWith path child = checksOut >>= ancestorWith' where
-	checksOut = exists $ path </> child
+ancestorWith :: FilePath -> [FilePath] -> IO (Maybe FilePath)
+ancestorWith path children = checksOut >>= ancestorWith' where
+	checksOut :: IO Bool
+	checksOut = allM (exists . (path </>)) children
 	canAscend = path /= takeDirectory path
 	next = takeDirectory path
 	ancestorWith' True = return $ Just path
-	ancestorWith' False | canAscend = ancestorWith next child
+	ancestorWith' False | canAscend = ancestorWith next children
 	                    | otherwise = return Nothing
 
 -- | Build a tree out of the filepaths in the book's source directory
