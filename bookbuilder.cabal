@@ -1,5 +1,5 @@
 Name:                Bookbuilder
-Version:             0.0
+Version:             0.1
 License:             MIT
 License-file:        LICENSE
 Category:            Writing
@@ -21,7 +21,7 @@ Cabal-Version:       >=1.6
 source-repository this
     type: git
     location: git://github.com/Soares/Bookbuilder.hs.git
-    tag: 0.0
+    tag: v0.1
 
 -- TODO: add bounds dependency
 -- TODO: remove unix dependency
