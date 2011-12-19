@@ -1,5 +1,6 @@
 module Text.Bookbuilder.Location
-	( Location(Location,list)
+	( Location(Location)
+	, toList
 	, separators
 	) where
 
@@ -20,6 +21,9 @@ instance Ord Location where
 common :: Location -> Location -> [Integer]
 common xs ys = take enough $ list xs
 	where enough = min (length $ list xs) (length $ list ys)
+
+toList :: Location -> [Integer]
+toList = list
 
 separators :: String
 separators = " .,;:|-_"

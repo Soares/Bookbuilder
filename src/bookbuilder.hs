@@ -16,7 +16,8 @@ import System.IO.Error
     ( isUserError
     , ioeGetLocation
     , ioeGetFileName )
-import Text.Bookbuilder ( Config(..), compile, normalize )
+import Text.Bookbuilder ( compile )
+import Text.Bookbuilder.Config ( Config(..), normalize )
 import Text.Bookbuilder.Location ( Location(Location) )
 
 -- | Data.List utilities
@@ -29,6 +30,7 @@ defaultConfig = Config
 	{ confRoot        = ""
 	, confSourceDir   = "src"
 	, confTemplateDir = Nothing
+    , confTemplates   = []
 	, confTheme       = "default"
 	, confOutputDest  = Nothing
 	, confDetect      = False
