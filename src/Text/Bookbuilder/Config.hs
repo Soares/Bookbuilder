@@ -103,10 +103,12 @@ normalize = concatM [ setRoot
 -- | Walk up the current directory looking for what looks like the root of the
 -- | book, returning the root of the book and the Location of the original path
 -- | relative to the discovered root. Throws UserError if detection fails.
-detect :: FilePath -> FilePath -> [FilePath] -> IO (FilePath, Location)
+detect :: FilePath -> FilePath -> [FilePath] -> IO (FilePath, Maybe Location)
 detect start source others = locate <$> findRoot where
 	requisites = source : others
-	locate root = (root, pathLocation $ start `from` (root </> source))
+	locate root | rel == start = (root, Nothing)
+	            | otherwise = (root, Just $ pathLocation rel)
+		where rel = start `from` (root </> source)
 	findRoot = start `ancestorWith` requisites >>= unwrapOrThrow
 	unwrapOrThrow Nothing = ioError $ errCantDetect requisites start
 	unwrapOrThrow (Just x) = return x
@@ -123,10 +125,11 @@ ancestorWith path children = checksOut >>= ancestorWith' where
 setRoot :: Config -> IO Config
 setRoot conf = canonicalize (confRoot conf) >>= setRoot' where
 	requisites = catMaybes [confTemplateDir conf]
-	set (root, loc) = conf{ confRoot = root, confStart = loc, confEnd = loc }
+	set (root, Nothing) = conf{ confRoot = root }
+	set (root, Just r) = conf{ confRoot = root, confStart = r, confEnd = r }
 	setRoot' root = if confDetect conf then detected else canonized where
 		detected = set <$> detect root (confSourceDir conf) requisites
-		canonized = return conf{ confRoot = root }
+		canonized = return $ set (root, Nothing)
 
 
 -- Template destination selection
