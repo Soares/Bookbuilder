@@ -45,7 +45,6 @@ Library
   else
     Build-depends: unix >= 2.4
   Hs-Source-Dirs:   src
-  Main-Is:          bookbuilder.hs
   Ghc-Options:      -Wall
   Ghc-Prof-Options: -auto-all
   -- END DUPLICATED SECTION
@@ -79,7 +78,7 @@ Executable bookbuilder
   else
     Build-depends: unix >= 2.4
   Hs-Source-Dirs:   src
-  Main-Is:          bookbuilder.hs
   Ghc-Options:      -Wall
   Ghc-Prof-Options: -auto-all
   -- END DUPLICATED SECTION
+  Main-Is:          bookbuilder.hs

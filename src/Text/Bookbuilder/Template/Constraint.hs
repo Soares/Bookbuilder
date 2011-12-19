@@ -6,14 +6,14 @@ module Text.Bookbuilder.Template.Constraint
 
 import Control.Monad ( liftM2, join )
 import Control.Applicative ( Applicative, (<*) )
-import Data.Bound ( Bound(Bounded, Unbounded) )
+import Data.Limit ( Limit(Bounded, Unbounded) )
 import Data.Function ( on )
 import Text.ParserCombinators.Parsec
 
 -- | Constraint utilities          =====================================
 
 data Constraint = Constraint
-	{ order    :: Bound Integer
+	{ order    :: Limit Integer
 	, isMember :: Integer -> Bool }
 -- NOTE: Constraint equality only measures whether constraints have equal
 -- *weight* in terms of when they should be applied
@@ -29,11 +29,11 @@ instance Show Constraint where
 
 -- | Exported behavior              ====================================
 
-fromName :: String -> Either ParseError (Bound [Constraint], String)
+fromName :: String -> Either ParseError (Limit [Constraint], String)
 fromName = join $ parse bothParts where
 	bothParts = (try unconstrained <|> constrained) +>> anything
 
-check :: Bound [Constraint] -> [Integer] -> Bool
+check :: Limit [Constraint] -> [Integer] -> Bool
 check Unbounded _ = True
 check (Bounded xs) ys | length xs == length ys = check' xs ys
                       | otherwise = False where
@@ -73,7 +73,7 @@ fullConstraint = Constraint Unbounded (const True)
 -- | Parsing                       =====================================
 
 -- Top-level constraints
-constrained, unconstrained :: GenParser Char st (Bound [Constraint])
+constrained, unconstrained :: GenParser Char st (Limit [Constraint])
 constrained = fmap Bounded constraints
 unconstrained = anymarker >> return Unbounded
 

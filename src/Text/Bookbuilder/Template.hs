@@ -7,7 +7,7 @@ module Text.Bookbuilder.Template
 
 import Prelude hiding ( catch )
 import Control.Exception ( catch )
-import Data.Bound ( Bound(Unbounded) )
+import Data.Limit ( Limit(Unbounded) )
 import Data.Function ( on )
 import Text.Bookbuilder.Template.Constraint ( Constraint, check, fromName )
 import System.FilePath.Posix
@@ -20,7 +20,7 @@ data Template = Template
 	, theme        :: String
 	, source       :: String
 	, extension    :: String
-	, constraints  :: Bound [Constraint]
+	, constraints  :: Limit [Constraint]
 	} deriving Show
 
 instance Eq Template where (==) = (==) `on` name
