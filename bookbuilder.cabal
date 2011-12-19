@@ -1,5 +1,5 @@
 Name:        Bookbuilder
-Version:       0.1
+Version:       0.2
 License:       MIT
 License-file:    LICENSE
 Category:      Writing
@@ -18,10 +18,9 @@ Maintainer:      nate@natesoares.com
 Build-Type:      Simple
 Cabal-Version:     >=1.6
 
-source-repository this
+source-repository head
   type: git
-  location: git://github.com/Soares/Bookbuilder.hs.git
-  tag: v0.1
+  location: git://github.com/Soares/Bookbuilder.git
 
 
 Library
