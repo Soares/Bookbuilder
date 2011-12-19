@@ -122,10 +122,15 @@ variables path body = do
 	       , ("title", pathTitle base)
 		   , ("n", maybe "" show n)
 		   , ("n0", maybe "" show n0)
+		   -- TODO: nLessN should be obsoleted when we use zippers
+		   , ("nLess2", maybe "" show nLess2)
+		   , ("nLess3", maybe "" show nLess3)
 		   ] where
 	loc = toList $ pathLocation path
 	n = maybeLast loc
 	n0 = (flip (-) 1) <$> n
+	nLess2 = (flip (-) 2) <$> n
+	nLess3 = (flip (-) 3) <$> n
 	maybeLast [] = Nothing
 	maybeLast (x:[]) = Just x
 	maybeLast (_:xs) = maybeLast xs
