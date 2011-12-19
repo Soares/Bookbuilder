@@ -10,6 +10,8 @@ module Text.Bookbuilder.Config
 	, operativePart
 	, template
 	, location
+	, defaultTemplatesDir
+	, defaultTheme
 	) where
 
 import Control.Arrow ( (&&&) )
@@ -159,11 +161,15 @@ setDestination conf = selectAndSet $ confOutputDest conf where
 
 
 -- Template discovery
+defaultTheme :: String
+defaultTheme = "default"
+
 templateList :: Config -> IO [Template]
 templateList conf = maybe (return []) findIn (templateDir conf) where
 	findIn dir = select <$> (mapM fromFile =<< ls dir)
 	select = sort . filter isGood . catMaybes
-	isGood = (confTheme conf ==) . theme
+	themes = [confTheme conf, defaultTheme]
+	isGood = (`elem` themes) . theme
 
 findTemplate :: Location -> [Template] -> Maybe Template
 findTemplate _ [] = Nothing
