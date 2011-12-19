@@ -13,8 +13,8 @@ import Text.ParserCombinators.Parsec
 -- | Constraint utilities          =====================================
 
 data Constraint = Constraint
-	{ order    :: Limit Integer
-	, isMember :: Integer -> Bool }
+	{ order    :: Limit Int
+	, isMember :: Int -> Bool }
 -- NOTE: Constraint equality only measures whether constraints have equal
 -- *weight* in terms of when they should be applied
 -- Do *NOT* treat this as actual equality
@@ -33,7 +33,7 @@ fromName :: String -> Either ParseError (Limit [Constraint], String)
 fromName = join $ parse bothParts where
 	bothParts = (try unconstrained <|> constrained) +>> anything
 
-check :: Limit [Constraint] -> [Integer] -> Bool
+check :: Limit [Constraint] -> [Int] -> Bool
 check Unbounded _ = True
 check (Bounded xs) ys | length xs == length ys = check' xs ys
                       | otherwise = False where
@@ -113,7 +113,7 @@ single = num >>= \n -> return $ Constraint (Bounded 1) (== n)
 
 
 -- Low-level parsed data
-num :: GenParser Char st Integer
+num :: GenParser Char st Int
 num = fmap read $ many1 numchar
 
 

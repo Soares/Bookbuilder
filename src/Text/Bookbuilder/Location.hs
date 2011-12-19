@@ -8,7 +8,7 @@ import Data.List.Split ( splitOn )
 import Data.List.Utils ( join )
 import Data.String.Utils ( lstrip )
 
-data Location = Location { list :: [Integer] }
+data Location = Location { list :: [Int] }
 
 -- NOTE: If one location is the beginning of another, they are 'equal'.
 -- Think of further depth in the Location as refinement.
@@ -18,11 +18,11 @@ instance Eq Location where
 instance Ord Location where
 	xs <= ys = common xs ys <= common ys xs
 
-common :: Location -> Location -> [Integer]
+common :: Location -> Location -> [Int]
 common xs ys = take enough $ list xs
 	where enough = min (length $ list xs) (length $ list ys)
 
-toList :: Location -> [Integer]
+toList :: Location -> [Int]
 toList = list
 
 separators :: String
@@ -45,7 +45,7 @@ readLocation s = [(Location xs, rest) | ("<", t) <- lex s
                                       , (xs, '>':rest) <- readInts t]
                  ++ [(Location xs, rest) | (xs, rest) <- readInts s]
 
-readInts :: ReadS [Integer]
+readInts :: ReadS [Int]
 readInts s = [(x : xs, rest) | (x, t) <- readInt s
                              , (_, u) <- readSep t
                              , (xs, rest) <- readInts u]
@@ -54,8 +54,8 @@ readInts s = [(x : xs, rest) | (x, t) <- readInt s
              ++ [([x], rest) | (x, rest) <- readInt s]
 
 -- This is a bit hackish, but we can't use the default implementation of
--- reads :: ReadS Integer because it uses 'lex' instead of 'dotlex'
-readInt :: ReadS Integer
+-- reads :: ReadS Int because it uses 'lex' instead of 'dotlex'
+readInt :: ReadS Int
 readInt s = [(x, rest++leftover) | (str, leftover) <- dotlex s
                                  , (x, rest) <- reads str]
 

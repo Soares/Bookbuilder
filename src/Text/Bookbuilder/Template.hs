@@ -42,7 +42,7 @@ fallback = Template { name = "fallback"
 					, extension = ".tex"
 					, constraints = Unbounded }
 
-matches :: Template -> [Integer] -> Bool
+matches :: Template -> [Int] -> Bool
 matches = check . constraints
 
 fromFile :: FilePath -> IO (Maybe Template)

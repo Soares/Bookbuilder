@@ -7,7 +7,10 @@ module Text.Bookbuilder.Config
 	, templateDir
 	, range
 	, dest
-	, operativePart
+	, operativePath
+	, childrenOf
+	, fullPath
+	, title
 	, template
 	, location
 	, defaultTemplatesDir
@@ -79,17 +82,29 @@ range = confStart &&& confEnd
 dest :: Config -> Maybe FilePath
 dest = ap maybeFromRoot confOutputDest
 
-template :: FilePath -> Config -> Template
+operativePath :: FilePath -> Config -> String
+operativePath path conf | path == srcDir conf = clip root
+                        | otherwise = clip rel where
+	clip = dropTrailingPathSeparator
+	root = clip $ takeFileName $ rootDir conf
+	rel = path `from` srcDir conf
+
+template :: String -> Config -> Template
 template path conf = fromMaybe fallback match
-	where match = findTemplate (location path conf) (confTemplates conf)
+	where match = findTemplate (location path) (confTemplates conf)
 
-operativePart :: FilePath -> Config -> String
-operativePart path conf | path == srcDir conf = clip $ rootDir conf
-                        | otherwise = clip path
-	where clip = takeFileName . dropTrailingPathSeparator
+fullPath :: String -> Config -> FilePath
+fullPath path conf = srcDir conf </> path
 
-location :: FilePath -> Config -> Location
-location path = pathLocation . (path `from`) . srcDir
+childrenOf :: String -> Config -> IO [String]
+childrenOf path conf = map (`operativePath` conf) <$> ls (path `fullPath` conf)
+
+title :: String -> Config -> String
+title "" conf = pathTitle $ rootDir conf
+title path _ = pathTitle path
+
+location :: String -> Location
+location = pathLocation
 
 normalize :: Config -> IO Config
 normalize = concatM [ setRoot

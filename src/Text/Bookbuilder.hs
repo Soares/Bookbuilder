@@ -1,39 +1,36 @@
-module Text.Bookbuilder ( compile ) where
+module Text.Bookbuilder -- ( compile ) where
+where
 
 -- TODO: Test on only file
 -- TODO: Test on no src
 -- TODO: Test on multi/level/src
--- TODO: Allow output to places other than .tex
--- TODO: add writer variables
---     parent, book, count, total, N, parentN, countN, totalN, fontsize, author, etc.
+-- TODO: support more writers than writeLaTeX
+-- TODO: add some pandoc writer variables (fontsize, author, etc.)
+-- TODO: Consider the Config order of most accesors. (Reader anyone?)
 
-import Control.Applicative ( (<*>) )
-import Control.Monad ( filterM )
-import Control.Monad.Loops ( andM )
 import Control.Monad.Trans ( liftIO )
 import Control.Monad.Reader ( asks )
 import Data.Char ( toLower )
 import Data.Functor ( (<$>) )
-import Data.Maybe ( fromJust )
+import Data.Maybe ( fromMaybe, fromJust, catMaybes )
 import Data.Tree ( Tree(Node) )
+import qualified Data.Tree.Zipper as Zipper
 import System.Directory ( doesFileExist )
 import System.FilePath.Posix ( takeExtension )
 import Text.Bookbuilder.Config
-	( Configged
-	, srcDir
+	( Config
+	, Configged
 	, range
 	, dest
-	, operativePart
+	, childrenOf
+	, fullPath
+	, title
 	, template
 	, location )
-import Text.Bookbuilder.FilePath ( ls, pathTitle, pathLocation, fileHasData )
 import Text.Bookbuilder.Location ( toList )
 import Text.Bookbuilder.Template ( Template, source )
 import Text.Pandoc
-	( Pandoc(Pandoc)
-	, Meta(Meta)
-	, Inline(Str)
-	, readers
+	( readers
 	, writeLaTeX
 	, defaultParserState
 	, defaultWriterOptions
@@ -51,17 +48,10 @@ contains (lo, hi) x = x >= lo && x <= hi
 
 
 
--- | Control.Monad utilities        ====================================
-
-ifM :: Monad m => m Bool -> m a -> m a -> m a
-ifM p x y = p >>= (\r -> if r then x else y)
-
-
-
 -- | Text.Pandoc utilities          ====================================
 
-pandocName :: FilePath -> String
-pandocName p = case takeExtension (map toLower p) of
+format :: FilePath -> String
+format p = case takeExtension (map toLower p) of
     ".xhtml"    -> "html"
     ".html"     -> "html"
     ".htm"      -> "html"
@@ -75,84 +65,116 @@ pandocName p = case takeExtension (map toLower p) of
     ".json"     -> "json"
     _           -> "markdown"
 
-withDefaultTitle :: Pandoc -> String -> Pandoc
-withDefaultTitle (Pandoc (Meta [] as d) bs) t = Pandoc (Meta [Str t] as d) bs
-withDefaultTitle doc _ = doc
-
 
 
 -- | Bookbuilder tree manipulation  ====================================
 
-buildTree :: FilePath -> IO (Tree FilePath)
-buildTree path = ifM (doesFileExist path)
-	(return $ Node path [])
-	(Node path <$> (mapM buildTree =<< ls path))
+data Gender = File | Directory deriving (Eq, Show, Read)
+type Section = (FilePath, Gender)
+type Structure = Tree Section
+type Position = Zipper.TreePos Zipper.Full Section
 
-prune :: Tree FilePath -> Configged IO (Tree FilePath)
-prune (Node p cs) = Node p <$> (filterM keep =<< mapM prune cs)
+buildTree :: String -> Configged IO Structure
+buildTree path = do
+	file <- asks $ fullPath path
+	isFile <- liftIO $ doesFileExist file
+	let node = if isFile then fileNode else dirNode
+	node path
 
-keep :: Tree FilePath -> Configged IO Bool
-keep node = (&&) <$> liftIO (hasContent node) <*> isInRange node
+fileNode :: String -> Configged IO Structure
+fileNode path = return $ Node (path, File) []
 
-hasContent :: Tree FilePath -> IO Bool
-hasContent (Node p []) = andM [doesFileExist p, fileHasData p]
-hasContent _ = return True
+dirNode :: String -> Configged IO Structure
+dirNode path = do
+	childPaths <- liftIO =<< asks (childrenOf path)
+	children <- mapM buildTree childPaths
+	return $ Node (path, Directory) children
 
-isInRange :: Tree FilePath -> Configged IO Bool
-isInRange (Node t _) = contains <$> asks range <*> asks (location t)
+prune :: Structure -> Config -> Structure
+prune (Node s cs) conf = Node s $ filter (`isInRange` conf) pruned
+	where pruned = map (`prune` conf) cs
+
+isInRange :: Structure -> Config -> Bool
+isInRange (Node (p, _) _) conf = contains (range conf) (location p)
+
+childrenPositions :: Position -> [Int] -> [Position]
+childrenPositions z is = catMaybes [Zipper.childAt i z | i <- is]
 
 
 
 -- | File and template rendering    ====================================
 
 render :: String -> String -> String
-render base contents = write $ parse contents `withDefaultTitle` title where
+render fmt text = write $ parse text where
 	write = writeLaTeX defaultWriterOptions{ writerChapters = True }
-	parse = (fromJust $ lookup pname readers) defaultParserState
-	pname = pandocName base
-	title = pathTitle base
+	parse = (fromJust $ lookup fmt readers) defaultParserState
 
 wrap :: [(String, String)] -> Template -> String
 wrap vars tmpl = renderTemplate vars $ source tmpl
 
-variables :: FilePath -> String -> Configged IO [(String, String)]
-variables path body = do
-	base <- asks $ operativePart path
-	return [ ("body", body)
-	       , ("title", pathTitle base)
-		   , ("n", maybe "" show n)
-		   , ("n0", maybe "" show n0)
-		   -- TODO: nLessN should be obsoleted when we use zippers
-		   , ("nLess2", maybe "" show nLess2)
-		   , ("nLess3", maybe "" show nLess3)
-		   ] where
-	loc = toList $ pathLocation path
-	n = maybeLast loc
-	n0 = (flip (-) 1) <$> n
-	nLess2 = (flip (-) 2) <$> n
-	nLess3 = (flip (-) 3) <$> n
+simplevars :: Position -> Config -> [(String, String)]
+simplevars z conf = [ ("title", title path conf)
+                    , ("n", show n)
+                    , ("counter", show counter)
+                    , ("count", show count)
+                    , ("smartN", show smartN)
+                    , ("smartCounter", show smartCounter)
+                    , ("smartCount", show smartCount)
+                    , ("nChildren", show $ length children) ] ++
+                    [ ("child", c) | c <- childTitles ] ++
+                    [ ("parent" ++ show (i :: Int), p) |
+                      (i, p) <- zip [0..] parentTitles] where
+	-- Helper functions
 	maybeLast [] = Nothing
 	maybeLast (x:[]) = Just x
 	maybeLast (_:xs) = maybeLast xs
+	sameGender (Node (_, g) _) = gender == g
+	-- Data structure
+	(Node (path, gender) children) = Zipper.tree z
+	loc = toList $ location path
+	lefts = Zipper.before z
+	rights = Zipper.after z
+	smartLefts = takeWhile sameGender lefts
+	smartRights = takeWhile sameGender rights
+	parents = map (\(_, p, _) -> p) $ Zipper.parents z
+	-- Simple variables
+	n = fromMaybe 1 $ maybeLast loc
+	counter = n - 1
+	count = length lefts + length rights + 1
+	smartCounter = length smartLefts
+	smartN = smartCounter + 1
+	smartCount = length smartLefts + length smartRights + 1
+	childTitles = map (\(Node (p, _) _) -> title p conf) children
+	parentTitles = map (\(p, _) -> title p conf) parents
+
+
+variables :: Position -> String -> Config -> [(String, String)]
+variables z body conf = ("body", body) : simplevars z conf
 
 
 
 -- | Bookbuilder compilation        ====================================
 
-flatten :: Tree FilePath -> Configged IO String
-flatten (Node path children) = do
-	leaf <- liftIO $ doesFileExist path
+flatten :: Position -> Configged IO String
+flatten z = do
+	let (Node (path, gender) cs) = Zipper.tree z
+	body <- case gender of
+		File -> do
+			file <- asks $ fullPath path
+			content <- liftIO $ readFile file
+			return $ render (format path) content
+		Directory -> do
+			let children = childrenPositions z [0..length cs - 1]
+			concat <$> mapM flatten children
+	vars <- asks $ variables z body
 	tmpl <- asks $ template path
-	body <- if leaf
-		then render <$> asks (operativePart path) <*> liftIO (readFile path)
-		else concat <$> mapM flatten children
-	vars <- variables path body
 	return $ wrap vars tmpl
 
 compile :: Configged IO ()
 compile = do
-	tree <- liftIO =<< buildTree <$> asks srcDir
-	content <- flatten =<< prune tree
+	tree <- buildTree ""
+	pruned <- asks $ prune tree
+	content <- flatten $ Zipper.fromTree pruned
 	destination <- asks dest
 	let write = maybe putStr writeFile destination
 	liftIO $ write content

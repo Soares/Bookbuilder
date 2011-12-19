@@ -16,7 +16,7 @@ import System.IO.Error
     ( isUserError
     , ioeGetLocation
     , ioeGetFileName )
-import Text.Bookbuilder ( compile )
+import Text.Bookbuilder -- ( compile )
 import Text.Bookbuilder.Config ( Config(..), normalize )
 import Text.Bookbuilder.Template ( defaultTheme )
 import Text.Bookbuilder.Location ( Location(Location) )
