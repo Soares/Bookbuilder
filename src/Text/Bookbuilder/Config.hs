@@ -125,7 +125,7 @@ setRoot conf = canonicalize (confRoot conf) >>= setRoot' where
 	requisites = catMaybes [confTemplateDir conf]
 	set (root, loc) = conf{ confRoot = root, confStart = loc, confEnd = loc }
 	setRoot' root = if confDetect conf then detected else canonized where
-		detected = set <$> (detect root (confSourceDir conf) requisites)
+		detected = set <$> detect root (confSourceDir conf) requisites
 		canonized = return conf{ confRoot = root }
 
 
@@ -143,17 +143,19 @@ setTemplateDir conf = maybeDefault $ confTemplateDir conf where
 
 
 -- Output destination selection
-destName :: String -> Location -> Location -> String
-destName t wlo whi = join "-" (t:parts (toList wlo) (toList whi)) where
-	parts [] [] = []
-	parts lo hi = if lo == hi then [sep lo] else [sep lo, sep hi]
+destName :: String -> String -> (Location, Location) -> String
+destName n thm (wlo, whi) = join "-" (n:parts (toList wlo) (toList whi)) where
+	parts lo hi = rangeparts lo hi ++ themeparts
+	themeparts = if thm == defaultTheme then [] else [thm]
+	rangeparts [] [] = []
+	rangeparts lo hi = if lo == hi then [sep lo] else [sep lo, sep hi]
 	sep = join "_" . map show
 
 setDestination :: Config -> IO Config
 setDestination conf = selectAndSet $ confOutputDest conf where
 	selectAndSet = maybe (return conf) (fmap set . select)
 	set out = conf{ confOutputDest = Just $ offerExtension "tex" out }
-	altName = destName (pathTitle root) (confStart conf) (confEnd conf)
+	altName = destName (pathTitle root) (confTheme conf) (range conf)
 	root = confRoot conf
 	select "" = return altName
 	select part = select' <$> doesDirectoryExist (root </> part) where
