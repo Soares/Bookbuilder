@@ -44,7 +44,8 @@ import Text.Bookbuilder.Template
 	, fallback
 	, theme
 	, fromFile
-	, matches )
+	, matches
+	, defaultTheme )
 import Text.Printf ( printf )
 
 
@@ -166,9 +167,6 @@ setDestination conf = selectAndSet $ confOutputDest conf where
 
 
 -- Template discovery
-defaultTheme :: String
-defaultTheme = "default"
-
 templateList :: Config -> IO [Template]
 templateList conf = maybe (return []) findIn (templateDir conf) where
 	findIn dir = select <$> (mapM fromFile =<< ls dir)

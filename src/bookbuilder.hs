@@ -17,7 +17,8 @@ import System.IO.Error
     , ioeGetLocation
     , ioeGetFileName )
 import Text.Bookbuilder ( compile )
-import Text.Bookbuilder.Config ( Config(..), normalize, defaultTheme )
+import Text.Bookbuilder.Config ( Config(..), normalize )
+import Text.Bookbuilder.Template ( defaultTheme )
 import Text.Bookbuilder.Location ( Location(Location) )
 
 -- | Data.List utilities

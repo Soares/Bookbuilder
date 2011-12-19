@@ -3,9 +3,12 @@ module Text.Bookbuilder.Template
 	, matches
 	, fromFile
 	, fallback
+	, isDefault
+	, defaultTheme
 	) where
 
 import Prelude hiding ( catch )
+import Control.Arrow ( (&&&) )
 import Control.Exception ( catch )
 import Data.Limit ( Limit(Unbounded) )
 import Data.Function ( on )
@@ -23,8 +26,14 @@ data Template = Template
 	, constraints  :: Limit [Constraint]
 	} deriving Show
 
+defaultTheme :: String
+defaultTheme = "default"
+
+isDefault :: Template -> Bool
+isDefault t = theme t == defaultTheme
+
 instance Eq Template where (==) = (==) `on` name
-instance Ord Template where (<=) = (<=) `on` constraints
+instance Ord Template where (<=) = (<=) `on` (isDefault &&& constraints)
 
 fallback :: Template
 fallback = Template { name = "fallback"
