@@ -8,19 +8,18 @@ module Text.Bookbuilder ( compile ) where
 --     parent, book, count, total, N, parentN, countN, totalN, fontsize, author, etc.
 
 import Control.Applicative ( (<*>) )
-import Control.Monad ( filterM, unless )
+import Control.Monad ( filterM )
 import Control.Monad.Loops ( andM )
 import Control.Monad.Trans ( liftIO )
-import Control.Monad.Reader ( ReaderT, asks )
+import Control.Monad.Reader ( asks )
 import Data.Char ( toLower )
 import Data.Functor ( (<$>) )
-import Data.Maybe ( fromJust, maybe )
+import Data.Maybe ( fromJust )
 import Data.Tree ( Tree(Node) )
 import System.Directory ( doesFileExist )
 import System.FilePath.Posix ( takeExtension )
 import Text.Bookbuilder.Config
-	( Config
-	, Configged
+	( Configged
 	, srcDir
 	, range
 	, dest
@@ -106,14 +105,14 @@ isInRange (Node t _) = contains <$> asks range <*> (asks $ location t)
 -- | File and template rendering    ====================================
 
 render :: String -> String -> String
-render base contents = write $ read contents `withDefaultTitle` title where
+render base contents = write $ parse contents `withDefaultTitle` title where
 	write = writeLaTeX defaultWriterOptions{ writerChapters = True }
-	read = (fromJust $ lookup pname readers) defaultParserState
+	parse = (fromJust $ lookup pname readers) defaultParserState
 	pname = pandocName base
 	title = pathTitle base
 
 wrap :: [(String, String)] -> Template -> String
-wrap vars template = renderTemplate vars $ source template
+wrap vars tmpl = renderTemplate vars $ source tmpl
 
 variables :: FilePath -> String -> Configged IO [(String, String)]
 variables path body = do

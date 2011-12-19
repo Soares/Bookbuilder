@@ -51,11 +51,11 @@ Library
   Exposed-modules: Text.Bookbuilder,
                    Text.Bookbuilder.Config
                    Text.Bookbuilder.FilePath
-                   Text.Bookbuilder.Templates
-                   Text.Bookbuilder.Templates.Constraints
+                   Text.Bookbuilder.Template
+                   Text.Bookbuilder.Template.Constraint
                    Text.Bookbuilder.Location
   -- TODO: remove this
-  Other-modules: Data.Bound
+  Other-modules: Data.Limit
 
 Executable bookbuilder
   -- Note: the following material must be in both Library and Executable stanzas.

@@ -13,12 +13,12 @@ module Text.Bookbuilder.Config
 	) where
 
 import Control.Arrow ( (&&&) )
-import Control.Monad ( ap, liftM2, unless )
+import Control.Monad ( ap, unless )
 import Control.Monad.Loops ( allM, concatM )
 import Control.Monad.Reader ( ReaderT )
 import Data.Functor ( (<$>) )
 import Data.List ( sort )
-import Data.Maybe ( catMaybes, fromMaybe, fromJust, maybe )
+import Data.Maybe ( catMaybes, fromMaybe )
 import Data.String.Utils ( join )
 import System.Directory ( doesDirectoryExist )
 import System.FilePath.Posix
@@ -36,7 +36,7 @@ import Text.Bookbuilder.FilePath
 	, canonicalize
 	, pathLocation
 	, from )
-import Text.Bookbuilder.Location ( Location(Location), toList )
+import Text.Bookbuilder.Location ( Location, toList )
 import Text.Bookbuilder.Template
 	( Template
 	, fallback
@@ -150,7 +150,7 @@ destName t wlo whi = join "-" (t:parts (toList wlo) (toList whi)) where
 setDestination :: Config -> IO Config
 setDestination conf = selectAndSet $ confOutputDest conf where
 	selectAndSet = maybe (return conf) (fmap set . select)
-	set dest = conf{ confOutputDest = Just $ offerExtension "tex" dest }
+	set out = conf{ confOutputDest = Just $ offerExtension "tex" out }
 	altName = destName (pathTitle root) (confStart conf) (confEnd conf)
 	root = confRoot conf
 	select "" = return altName
