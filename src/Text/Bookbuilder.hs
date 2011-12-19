@@ -26,7 +26,8 @@ import Text.Bookbuilder.Config
 	, operativePart
 	, template
 	, location )
-import Text.Bookbuilder.FilePath ( ls, pathTitle, fileHasData )
+import Text.Bookbuilder.FilePath ( ls, pathTitle, pathLocation, fileHasData )
+import Text.Bookbuilder.Location ( toList )
 import Text.Bookbuilder.Template ( Template, source )
 import Text.Pandoc
 	( Pandoc(Pandoc)
@@ -91,14 +92,14 @@ prune :: Tree FilePath -> Configged IO (Tree FilePath)
 prune (Node p cs) = Node p <$> (filterM keep =<< mapM prune cs)
 
 keep :: Tree FilePath -> Configged IO Bool
-keep node = (&&) <$> (liftIO $ hasContent node) <*> isInRange node
+keep node = (&&) <$> liftIO (hasContent node) <*> isInRange node
 
 hasContent :: Tree FilePath -> IO Bool
 hasContent (Node p []) = andM [doesFileExist p, fileHasData p]
 hasContent _ = return True
 
 isInRange :: Tree FilePath -> Configged IO Bool
-isInRange (Node t _) = contains <$> asks range <*> (asks $ location t)
+isInRange (Node t _) = contains <$> asks range <*> asks (location t)
 
 
 
@@ -118,7 +119,16 @@ variables :: FilePath -> String -> Configged IO [(String, String)]
 variables path body = do
 	base <- asks $ operativePart path
 	return [ ("body", body)
-	       , ("title", pathTitle base) ]
+	       , ("title", pathTitle base)
+		   , ("n", maybe "" show n)
+		   , ("n0", maybe "" show n0)
+		   ] where
+	loc = toList $ pathLocation path
+	n = maybeLast loc
+	n0 = (flip (-) 1) <$> n
+	maybeLast [] = Nothing
+	maybeLast (x:[]) = Just x
+	maybeLast (_:xs) = maybeLast xs
 
 
 
