@@ -37,7 +37,7 @@ variables z conf = let
 	smartN = smartCounter + 1
 	smartCount = length smartLefts + length smartRights + 1
 	childTitles = map (\(Node s _) -> title s conf) children
-	parentTitles = map (flip title conf) ancestors
+	parentTitles = map (`title` conf) ancestors
     in [ ("title", title section conf)
        , ("n", show n)
        , ("counter", show counter)

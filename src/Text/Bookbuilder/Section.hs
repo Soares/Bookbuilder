@@ -79,10 +79,10 @@ sections :: TreePos Full Section -> [Section]
 sections z = label z : above z
 
 valid :: [Section] -> Config -> Bool
-valid ss conf = isInRange (location ss) conf
+valid ss = isInRange (location ss)
 
 filepath :: [Section] -> Config -> FilePath
-filepath ss conf = src conf </> (joinPath $ reverse $ map _path ss)
+filepath ss conf = src conf </> joinPath (reverse $ map _path ss)
 
 location :: [Section] -> Location
 location = foldr (focus . index) nowhere . reverse
@@ -101,7 +101,7 @@ subsections ss conf = ls (filepath ss conf) >>= mapM create where
 	create p = section (splitFileName p) (context conf)
 
 contextualize :: Section -> [(String, String)] -> Section
-contextualize s vars = s{ _context = vars ++ (_context s) }
+contextualize s vars = s{ _context = vars ++ _context s }
 
 fill :: Section -> String -> Section
 fill s body = s{ _body = body }

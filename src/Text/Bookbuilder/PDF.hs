@@ -3,19 +3,18 @@ module Text.Bookbuilder.PDF ( outputLaTeX ) where
 -- TODO: the style here doesn't match Bookbuilder style
 -- TODO: Add real error handling
 
+import Prelude hiding ( catch )
 import Data.List (isInfixOf, intercalate)
 import Data.Maybe (isNothing)
-import qualified Data.ByteString as BS
 import Codec.Binary.UTF8.String (encodeString)
+import qualified Data.ByteString as BS
 import Data.ByteString.UTF8 (toString)
-import Control.Monad (unless, guard, liftM, when)
+import Control.Monad (unless, guard, liftM)
 import Control.Concurrent (putMVar, takeMVar, newEmptyMVar, forkIO)
-import Control.Exception (tryJust, bracket, evaluate)
+import Control.Exception (catch, tryJust, bracket, evaluate)
 import Control.Monad.Trans (liftIO)
-import System.IO.Error (isAlreadyExistsError)
-
 import System.IO
-import System.IO.Error (isDoesNotExistError)
+import System.IO.Error (isDoesNotExistError, isAlreadyExistsError)
 import System.Environment ( getProgName )
 import System.Exit (ExitCode (..))
 import System.FilePath
@@ -47,7 +46,7 @@ readProcessWithExitCode' cmd args input = do
     _ <- forkIO $ evaluate (length err) >> putMVar outMVar ()
 
     -- now write and flush any input
-    when (not (null input)) $ do hPutStr inh input; hFlush inh
+    unless (null input) $ do hPutStr inh input; hFlush inh
     hClose inh -- done with stdin
 
     -- wait on the output
@@ -83,7 +82,7 @@ runLatexRaw latexProgram file = do
   -- err  , bib , ref , msg
     (True , _    , _   , msg) -> return $ Left $ Left msg   -- failure
     (False, True , _   , msg) -> runBibtex file >>
-                                (return $ Left $ Right msg) -- citations
+                                 return ( Left $ Right msg) -- citations
     (False, _    , True, msg) -> return $ Left $ Right msg  -- references
     (False, False, False, _ ) -> return $ Right pdfFile     -- success
 
@@ -103,7 +102,7 @@ checkLatex :: String -> (Bool, Bool, Bool, String)
 checkLatex ""  = (True, False, False, "Could not read log file")
 checkLatex txt = (err , bib, ref, unlines $! msgs ++ tips)
   where
-  xs `oneOf` x = any (flip isInfixOf x) xs
+  xs `oneOf` x = any (`isInfixOf` x) xs
   msgs = dropWhile (not . errorline) $ lines txt
   errorline ('!':_) = True
   errorline _ = False
@@ -172,7 +171,7 @@ outputLaTeX path tex = withTempDir "bookbuilder" $ \tmp -> do
     let miss = map snd $ filter (isNothing . fst) $ zip paths execs
     unless (null miss) $ warn $! "Could not find " ++ intercalate ", " miss
 
-    let texFile = (replaceDirectory path tmp) <.> "tex"
+    let texFile = replaceDirectory path tmp <.> "tex"
     writeFile texFile tex
 
     latexRes <- runLatex latexProgram texFile

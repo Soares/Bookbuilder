@@ -46,7 +46,7 @@ discover z = do
 	subsecs <- liftIO =<< asks (subsections $ sections z)
 	filled <- concatM (map pipe subsecs) (children z)
 	return $ fromMaybe z $ parent filled
-	where pipe s hole = (maybe hole nextSpace) <$> (discover' s hole)
+	where pipe s hole = maybe hole nextSpace <$> discover' s hole
 
 discover' :: Section -> TreePos Empty Section -> Configged IO (Maybe Structure)
 discover' s z = let z' = insert (Node s []) z in do
@@ -78,5 +78,5 @@ flatten prof z = reduce prof (s' : above z) where
 
 flatten' :: Profile -> TreePos Empty Section -> String
 flatten' prof z = case nextTree z of
-	Just c -> (flatten prof c) ++ (flatten' prof $ nextSpace c)
+	Just c -> flatten prof c ++ flatten' prof (nextSpace c)
 	Nothing -> ""

@@ -14,14 +14,14 @@ module Text.Bookbuilder.Config
 	) where
 
 import Prelude hiding ( error )
-import Control.Arrow ( (***) )
+import Control.Arrow ( (***), first, second )
 import Control.Monad ( unless )
 import Control.Monad.Loops ( concatM )
 import Control.Monad.Reader ( ReaderT )
 import Control.Monad.State ( StateT, runStateT, modify )
 import Control.Monad.Trans ( liftIO )
 import Data.Functor ( (<$>) )
-import Data.Maybe ( fromMaybe, catMaybes )
+import Data.Maybe ( fromMaybe, mapMaybe )
 import Data.List.Utils ( join, startswith )
 import System.Directory ( doesDirectoryExist )
 import System.FilePath.Posix
@@ -158,7 +158,7 @@ setProfiles opts conf = let path = root conf </> optProfileDir opts in do
 	there <- liftIO $ doesDirectoryExist path
 	if there then do
 		files <- liftIO $ ls path
-		(profs, warnings) <- merge <$> (liftIO $ mapM Profile.load files)
+		(profs, warnings) <- merge <$> liftIO (mapM Profile.load files)
 		unless (null warnings) (warn $ ProfileWarnings warnings)
 		return conf{ _profiles = profs }
 		else error (NoProfiles path) >> return conf
@@ -172,7 +172,7 @@ setRange :: Options -> Config -> Dangerously IO Config
 setRange opts conf | optDetect opts && optRoot opts `startswith` src conf = do
 	let path = optRoot opts `from` src conf
 	let parts = splitPath path
-	let locations = catMaybes $ map fromString parts
+	let locations = mapMaybe fromString parts
 	let location = foldr focus nowhere locations
 	return $ use location
                    | otherwise = return $ use nowhere
@@ -195,10 +195,10 @@ setVars opts conf = return conf{ _vars = optVars opts }
 type Dangerously = StateT ([ConfigError], [ConfigWarning])
 
 error :: ConfigError -> Dangerously IO ()
-error e = modify (\(es, ws) -> (e:es, ws))
+error e = modify $ first ((:) e)
 
 warn :: ConfigWarning -> Dangerously IO ()
-warn w = modify (\(es, ws) -> (es, w:ws))
+warn w = modify $ second ((:) w)
 
 data ConfigError = NoRoot FilePath
                  | CantDetect FilePath [FilePath]

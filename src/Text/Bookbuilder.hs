@@ -1,28 +1,33 @@
-module Text.Bookbuilder -- TODO ( compile ) where
-where
+module Text.Bookbuilder ( Target, targets, output ) where
 
--- TODO: default profile -> title name
--- TODO: add config file (top level & profile specific)
---		author
---		pdf file
--- TODO: Test on only file
--- TODO: Test non-uniform extensions
--- TODO: Test '-' profile
--- TODO: Test on no src
--- TODO: Test broken templates
--- TODO: Test on multi/level/src
--- TODO: Test inputformats
--- TODO: Suppress PDF's output of progress
--- TODO: add our own output of progress
--- TODO: add variable opts (or context files)
--- TODO: we're eating a lot of template lines (and putting nbsps in them.)
---		obviously we're misusing pandoc somehow
--- TODO: add debug opt
--- TODO: add silent option
--- TODO: add 'cautious' option
--- TODO: add 'profiles' limiting option
--- TODO: print status updates
--- TODO: hlint
+-- TODO:
+--		rename the profiles dir to targets
+--		add a 'targets' option
+--			to limit the targets used
+--		add context file support
+--			profiles/context and profiles/*/context
+--			remove 'author' after having done so
+--		add config file support
+--			profiles/config and profiles/*/config
+--			add support as writer options
+--		change Config to Environment
+--			expose targets instead of profiles
+--			profiles named 'default' should output with the title name
+--			split 'Options' out of 'Environment'
+--		make a Book/ namespace
+--			turn all the functions of [Section] into functions of Position
+--			make sure that environment starts with the base position
+--		add a 'silent' option
+--		add a flag to signify "this is src, everything else is one level up"
+--
+-- CHECK:
+--		whether or not we need newlines at the end of templates
+--			case in point: remove newlines from default.epub md files
+-- Test:
+--		on a book where src/ is a file
+--		on a book where src is given as multiple/level/src/
+--		on a book with internally different input formats
+--		on a book where src/ is above the book
 
 import Control.Monad ( when )
 import Control.Monad.Trans ( liftIO )

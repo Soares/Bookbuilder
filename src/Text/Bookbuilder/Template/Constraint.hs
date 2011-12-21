@@ -39,7 +39,7 @@ includes = _member
 
 matches :: Constraints -> [Int] -> Bool
 matches Unbounded _ = True
-matches (Bounded xs) ys = if length xs == length ys then check xs ys else False
+matches (Bounded xs) ys = (length xs == length ys) && check xs ys
     where check cs zs = and $ zipWith includes cs zs
 
 
@@ -82,7 +82,7 @@ unconstrained = anymarker >> return Unbounded
 
 -- | Constraint aggregation
 constraints, holeConstraints, numConstraints :: GenParser Char st [Constraint]
-constraints = (try holeConstraints) <|> (try numConstraints) <|> (return [])
+constraints = try holeConstraints <|> try numConstraints <|> return []
 holeConstraints = do
     try (underscore >> quote) <|> underscore <|> quote
     rest <- constraints

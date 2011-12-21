@@ -6,7 +6,7 @@ import System.Console.GetOpt
 import System.Exit ( exitWith, ExitCode (..) )
 import System.Environment ( getArgs, getProgName )
 import System.IO ( hPutStrLn, stderr )
-import Text.Bookbuilder -- TODO ( compile )
+import Text.Bookbuilder ( targets, output )
 import Text.Bookbuilder.Config ( Options(..), configure, Config )
 import Text.Bookbuilder.Location ( Location )
 
