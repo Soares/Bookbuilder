@@ -1,4 +1,4 @@
-module Text.Bookbuilder.Location
+module Data.Location
 	( Location
 	, Range
 	, toList
