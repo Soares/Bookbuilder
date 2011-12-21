@@ -30,6 +30,8 @@ Library
   -- TODO: remove unix dependency
   -- TODO: add bounds dependency
   Build-Depends: base >= 4 && < 5,
+           bytestring >= 0.9,
+           utf8-string >= 0.3,
            pandoc >= 1.8,
            filepath >= 1.2,
            monad-loops >= 0.3,
@@ -64,6 +66,8 @@ Executable bookbuilder
   -- TODO: remove unix dependency
   -- TODO: add bounds dependency
   Build-Depends: base >= 4 && < 5,
+           bytestring >= 0.9,
+           utf8-string >= 0.3,
            pandoc >= 1.8,
            filepath >= 1.2,
            monad-loops >= 0.3,

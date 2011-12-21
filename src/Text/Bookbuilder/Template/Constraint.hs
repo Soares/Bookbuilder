@@ -1,26 +1,28 @@
 module Text.Bookbuilder.Template.Constraint
-	( Constraint(isMember)
-	, fromName
-	, check
+	( Constraint
+    , Constraints
+	, load
+    , includes
+    , matches
 	) where
 
 import Control.Monad ( liftM2, join )
-import Control.Applicative ( Applicative, (<*) )
+import Control.Applicative ( Applicative, (<*), (<$>) )
 import Data.Limit ( Limit(Bounded, Unbounded) )
 import Data.Function ( on )
 import Text.ParserCombinators.Parsec
 
--- | Constraint utilities          =====================================
-
 data Constraint = Constraint
-	{ order    :: Limit Int
-	, isMember :: Int -> Bool }
+	{ _order    :: Limit Int
+	, _member   :: Int -> Bool }
+
+type Constraints = Limit [Constraint]
+
 -- NOTE: Constraint equality only measures whether constraints have equal
 -- *weight* in terms of when they should be applied
 -- Do *NOT* treat this as actual equality
-instance Eq Constraint where (==) = (==) `on` order
-instance Ord Constraint where (<=) = (<=) `on` order
--- For convenience & debugging only
+instance Eq Constraint where (==) = (==) `on` _order
+instance Ord Constraint where (<=) = (<=) `on` _order
 instance Show Constraint where
 	show (Constraint Unbounded _) = "@"
 	show (Constraint _ fn) = concatMap (\x -> if fn x then "!" else ":") [1..7]
@@ -29,16 +31,16 @@ instance Show Constraint where
 
 -- | Exported behavior              ====================================
 
-fromName :: String -> Either ParseError (Limit [Constraint], String)
-fromName = join $ parse bothParts where
-	bothParts = (try unconstrained <|> constrained) +>> anything
+load :: String -> Either ParseError Constraints
+load = join $ parse $ try unconstrained <|> constrained
 
-check :: Limit [Constraint] -> [Int] -> Bool
-check Unbounded _ = True
-check (Bounded xs) ys | length xs == length ys = check' xs ys
-                      | otherwise = False where
-    check' (g:gs) (z:zs) = isMember g z && check' gs zs
-    check' _ _ = True
+includes :: Constraint -> Int -> Bool
+includes = _member
+
+matches :: Constraints -> [Int] -> Bool
+matches Unbounded _ = True
+matches (Bounded xs) ys = if length xs == length ys then check xs ys else False
+    where check cs zs = and $ zipWith includes cs zs
 
 
 
@@ -72,26 +74,25 @@ fullConstraint = Constraint Unbounded (const True)
 
 -- | Parsing                       =====================================
 
--- Top-level constraints
-constrained, unconstrained :: GenParser Char st (Limit [Constraint])
+-- | Top-level constraints
+constrained, unconstrained :: GenParser Char st Constraints
 constrained = fmap Bounded constraints
 unconstrained = anymarker >> return Unbounded
 
 
--- Constraint aggregation
+-- | Constraint aggregation
 constraints :: GenParser Char st [Constraint]
-constraints = endBy constraint underscore
+constraints = many constraint
 
 
--- Constraint parsers
-constraint, nums, rng, lo, hi, single :: GenParser Char st Constraint
+-- | Constraint parsers
+constraint, bounded, unbounded, nums, rng, lo, hi, single
+    :: GenParser Char st Constraint
 
 -- One level of constraint, unbounded if empty (1|4-6|10, etc.)
-constraint = do
-	chunks <- sepBy nums pipe
-	return $ if null chunks
-		then fullConstraint
-		else foldr combine emptyConstraint chunks
+constraint = try bounded <|> unbounded
+bounded = foldr combine emptyConstraint <$> sepBy1 nums pipe
+unbounded = underscore >> return fullConstraint
 
 -- A block of numbers
 nums = try rng <|> try lo <|> try hi <|> single
@@ -104,26 +105,25 @@ hi = hyphen >> num >>= \y -> return $ Constraint (Bounded $ 1 + y) (<= y)
 
 -- A range of numbers (1-2, 3-17, etc.), from lower to higher
 rng = do
-	(x', y') <- num >>> hyphen +>> num
-	let (x, y) = (min x' y', max x' y')
-	return $ Constraint (Bounded $ 1 + y - x) (`elem` [x..y])
+	(x, y) <- num >>> hyphen +>> num
+	let (x', y') = (min x y, max x y)
+	return $ Constraint (Bounded $ 1 + y' - x') (`elem` [x'..y'])
 
 -- An unadorned number (1, 2, etc.)
 single = num >>= \n -> return $ Constraint (Bounded 1) (== n)
 
 
--- Low-level parsed data
+-- | Low-level parsed data
 num :: GenParser Char st Int
 num = fmap read $ many1 numchar
 
 
--- Special strings
-anything, anymarker :: GenParser Char st String
-anything = many $ noneOf ""
+-- | Special strings
+anymarker :: GenParser Char st String
 anymarker = mapM char "any"
 
 
--- Names for simple characters
+-- | Names for simple characters
 hyphen, pipe, numchar, underscore :: GenParser Char st Char
 hyphen = char '-'
 pipe = oneOf "|"

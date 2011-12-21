@@ -1,235 +1,231 @@
 module Text.Bookbuilder.Config
-	( Config(..)
+	( Options(..)
+	, Config
 	, Configged
-	, normalize
-	, rootDir
-	, srcDir
-	, templateDir
-	, range
+	, configure
+	, root
+	, src
 	, dest
-	, operativePath
-	, childrenOf
-	, fullPath
-	, title
-	, template
-	, location
-	, defaultTemplatesDir
-	, defaultTheme
+	, profiles
+	, Range
+	, range
+	, isInRange
+	, context
 	) where
 
-import Control.Arrow ( (&&&) )
-import Control.Monad ( ap, unless )
-import Control.Monad.Loops ( allM, concatM )
+import Prelude hiding ( error )
+import Control.Arrow ( (***) )
+import Control.Monad ( unless )
+import Control.Monad.Loops ( concatM )
 import Control.Monad.Reader ( ReaderT )
+import Control.Monad.State ( StateT, runStateT, modify )
+import Control.Monad.Trans ( liftIO )
 import Data.Functor ( (<$>) )
-import Data.List ( sort )
-import Data.Maybe ( catMaybes, fromMaybe )
-import Data.String.Utils ( join )
+import Data.Maybe ( fromMaybe, catMaybes )
+import Data.List.Utils ( join, startswith )
 import System.Directory ( doesDirectoryExist )
 import System.FilePath.Posix
-	( (</>)
-	, normalise
-	, takeFileName
-	, dropTrailingPathSeparator
-	, takeDirectory )
-import System.IO.Error ( mkIOError , userErrorType )
+	( (</>), (<.>)
+	, splitPath
+	, splitExtension )
 import Text.Bookbuilder.FilePath
 	( ls
 	, exists
-	, pathTitle
-	, offerExtension
-	, canonicalize
-	, pathLocation
+	, ancestorWith
+	, canonicalizeHere
 	, from )
-import Text.Bookbuilder.Location ( Location, toList )
-import Text.Bookbuilder.Template
-	( Template
-	, fallback
-	, theme
-	, fromFile
-	, matches
-	, defaultTheme )
+import Text.Bookbuilder.Location
+	( Location
+	, Range
+	, fromString
+	, toList
+	, focus
+	, nowhere )
+import Text.Bookbuilder.Profile ( Profile, ProfileWarning )
+import qualified Text.Bookbuilder.Profile as Profile
 import Text.Printf ( printf )
 
 
+data Options = Options
+	{ optRoot       :: FilePath
+	, optSourceDir  :: FilePath
+	, optProfileDir :: FilePath
+	, optBuildDir   :: FilePath
+	, optStart      :: Maybe Location
+	, optEnd        :: Maybe Location
+	, optDetect     :: Bool
+	, optVars       :: [(String, String)]
+	, optHelp       :: Bool
+	} deriving Show
+
 data Config = Config
-	{ confRoot        :: FilePath
-	, confSourceDir   :: FilePath
-	, confTemplateDir :: Maybe FilePath
-	, confTemplates   :: [Template]
-	, confTheme       :: String
-	, confOutputDest  :: Maybe FilePath
-	, confDetect      :: Bool
-	, confStart       :: Location
-	, confEnd         :: Location
-	, confHelp        :: Bool
-	} deriving (Eq, Show)
+	{ _root     :: FilePath
+	, _src      :: FilePath
+	, _build    :: FilePath
+	, _profiles :: [Profile]
+	, _vars     :: [(String, String)]
+	, _range    :: Range
+	} deriving Show
 
 type Configged = ReaderT Config
 
-rootDir :: Config -> FilePath
-rootDir = confRoot
+defaultConfig :: Config
+defaultConfig = Config "" "" "" [] [] (nowhere, nowhere)
 
-srcDir :: Config -> FilePath
-srcDir = ap fromRoot confSourceDir
+root :: Config -> FilePath
+root = _root
 
-templateDir :: Config -> Maybe FilePath
-templateDir = ap maybeFromRoot confTemplateDir
+src :: Config -> FilePath
+src = _src
 
-range :: Config -> (Location, Location)
-range = confStart &&& confEnd
-
-dest :: Config -> Maybe FilePath
-dest = ap maybeFromRoot confOutputDest
-
-operativePath :: FilePath -> Config -> String
-operativePath path conf | path == srcDir conf = clip root
-                        | otherwise = clip rel where
-	clip = dropTrailingPathSeparator
-	root = clip $ takeFileName $ rootDir conf
-	rel = path `from` srcDir conf
-
-template :: String -> Config -> Template
-template path conf = fromMaybe fallback match
-	where match = findTemplate (location path) (confTemplates conf)
-
-fullPath :: String -> Config -> FilePath
-fullPath path conf = srcDir conf </> path
-
-childrenOf :: String -> Config -> IO [String]
-childrenOf path conf = map (`operativePath` conf) <$> ls (path `fullPath` conf)
-
-title :: String -> Config -> String
-title "" conf = pathTitle $ rootDir conf
-title path _ = pathTitle path
-
-location :: String -> Location
-location = pathLocation
-
-normalize :: Config -> IO Config
-normalize = concatM [ setRoot
-                    , setTemplateDir
-                    , setDestination
-                    , setTemplateList
-                    , check ]
-
-
--- Root discovery
-
--- | Walk up the current directory looking for what looks like the root of the
--- | book, returning the root of the book and the Location of the original path
--- | relative to the discovered root. Throws UserError if detection fails.
-detect :: FilePath -> FilePath -> [FilePath] -> IO (FilePath, Maybe Location)
-detect start source others = locate <$> findRoot where
-	requisites = source : others
-	locate root | rel == start = (root, Nothing)
-	            | otherwise = (root, Just $ pathLocation rel)
-		where rel = start `from` (root </> source)
-	findRoot = start `ancestorWith` requisites >>= unwrapOrThrow
-	unwrapOrThrow Nothing = ioError $ errCantDetect requisites start
-	unwrapOrThrow (Just x) = return x
-
-ancestorWith :: FilePath -> [FilePath] -> IO (Maybe FilePath)
-ancestorWith path children = checksOut >>= ancestorWith' where
-	ancestorWith' True = return $ Just path
-	ancestorWith' False | canAscend = ancestorWith next children
-	                    | otherwise = return Nothing
-	checksOut = allM (exists . (path </>)) children
-	canAscend = path /= takeDirectory path
-	next = takeDirectory path
-
-setRoot :: Config -> IO Config
-setRoot conf = canonicalize (confRoot conf) >>= setRoot' where
-	requisites = catMaybes [confTemplateDir conf]
-	set (root, Nothing) = conf{ confRoot = root }
-	set (root, Just r) = conf{ confRoot = root, confStart = r, confEnd = r }
-	setRoot' root = if confDetect conf then detected else canonized where
-		detected = set <$> detect root (confSourceDir conf) requisites
-		canonized = return $ set (root, Nothing)
-
-
--- Template destination selection
-defaultTemplatesDir :: String
-defaultTemplatesDir = "templates"
-
-setTemplateDir :: Config -> IO Config
-setTemplateDir conf = maybeDefault $ confTemplateDir conf where
-	maybeDefault Nothing = choose <$> wouldDefaultWork
-	maybeDefault _ = return conf
-	wouldDefaultWork = exists $ confRoot conf </> defaultTemplatesDir
-	choose defaultWorks = if defaultWorks then defaulted else conf
-	defaulted = conf{ confTemplateDir = Just defaultTemplatesDir }
-
-
--- Output destination selection
-destName :: String -> String -> (Location, Location) -> String
-destName n thm (wlo, whi) = join "-" (n:parts (toList wlo) (toList whi)) where
-	parts lo hi = rangeparts lo hi ++ themeparts
-	themeparts = if thm == defaultTheme then [] else [thm]
-	rangeparts [] [] = []
-	rangeparts lo hi = if lo == hi then [sep lo] else [sep lo, sep hi]
+dest :: Profile -> Config -> FilePath
+dest prof conf = _build conf </> filename where
+	(name, ext) = splitExtension $ Profile.filename prof
+	(start, end) = (toList *** toList) (_range conf)
+	filename = name' <.> ext
+	name' = join "-" (name : parts start end)
+	parts [] [] = []
+	parts lo hi = if lo == hi then [sep lo] else [sep lo, sep hi]
 	sep = join "_" . map show
 
-setDestination :: Config -> IO Config
-setDestination conf = selectAndSet $ confOutputDest conf where
-	selectAndSet = maybe (return conf) (fmap set . select)
-	set out = conf{ confOutputDest = Just $ offerExtension "tex" out }
-	altName = destName (pathTitle root) (confTheme conf) (range conf)
-	root = confRoot conf
-	select "" = return altName
-	select part = select' <$> doesDirectoryExist (root </> part) where
-		select' isDir = if isDir then part </> altName else part
+profiles :: Config -> [Profile]
+profiles = _profiles
+
+range :: Config -> (Location, Location)
+range = _range
+
+context :: Config -> [(String, String)]
+context = _vars
+
+isInRange :: Location -> Config -> Bool
+isInRange loc conf = loc >= lo && loc <= hi where (lo, hi) = range conf
+
+configure :: Options -> IO (Either [ConfigError] Config, [ConfigWarning])
+configure opts = do
+	start <- canonicalizeHere $ optRoot opts
+	let opts' = opts{ optRoot = start }
+	let setters = [setRoot, setSrc, setBuild, setProfiles, setRange, setVars]
+	let make = concatM (map ($ opts') setters) defaultConfig
+	(config, (errs, warnings)) <- runStateT make ([], [])
+	return (if null errs then Right config else Left errs, warnings)
 
 
--- Template discovery
-templateList :: Config -> IO [Template]
-templateList conf = maybe (return []) findIn (templateDir conf) where
-	findIn dir = select <$> (mapM fromFile =<< ls dir)
-	select = sort . filter isGood . catMaybes
-	themes = [confTheme conf, defaultTheme]
-	isGood = (`elem` themes) . theme
 
-findTemplate :: Location -> [Template] -> Maybe Template
-findTemplate _ [] = Nothing
-findTemplate loc (t:ts) | matches t $ toList loc = Just t
-                        | otherwise = findTemplate loc ts
+-- | Root discovery
 
-setTemplateList :: Config -> IO Config
-setTemplateList conf = set <$> templateList conf
-	where set ts = conf{ confTemplates = ts }
+setRoot :: Options -> Config -> Dangerously IO Config
+setRoot opts conf | optDetect opts = set <$> detect start requisites
+                  | otherwise = return $ set start where
+	requisites = map ($ opts) [optSourceDir, optProfileDir, optBuildDir]
+	start = optRoot opts
+	set r = conf{ _root = r }
 
-
--- Verification
-check :: Config -> IO Config
-check conf = do
-	haveSources <- exists $ srcDir conf
-	unless haveSources (ioError $ errNotABook conf)
-	haveTemplates <- existsIfJust $ templateDir conf
-	unless haveTemplates (ioError $ errNoTemplates conf)
-	return conf
-	where existsIfJust = maybe (return True) exists
+detect :: FilePath -> [FilePath] -> Dangerously IO FilePath
+detect path [] = error (NoSource path) >> return path
+detect path children = let err = error (CantDetect path children) in do
+	result <- liftIO $ path `ancestorWith` children
+	case result of
+		Nothing -> err >> return path
+		Just found -> return found
 
 
--- Errors
-errCantDetect :: [FilePath] -> FilePath -> IOError
-errCantDetect sources origin = confError (msg $ show sources) (Just origin)
-	where msg = printf "Could not detect book (looked for directories: %s)"
 
-errNoTemplates :: Config -> IOError
-errNoTemplates = confError msg . templateDir
-	where msg = "Can not find template directory" 
+-- Source directory assurance
 
-errNotABook :: Config -> IOError
-errNotABook = confError msg . Just . srcDir
-	where msg = "Can not find book source"
+setSrc :: Options -> Config -> Dangerously IO Config
+setSrc opts conf = let path = root conf </> optSourceDir opts in do
+	there <- liftIO $ exists path
+	unless there (error $ NoSource path)
+	return conf{ _src = path }
 
 
--- Helpers
-confError :: String -> Maybe FilePath -> IOError
-confError msg = mkIOError userErrorType msg Nothing
 
-fromRoot :: Config -> FilePath -> FilePath
-fromRoot conf path = normalise $ confRoot conf </> path
+-- Build directory assurance
 
-maybeFromRoot :: Config -> Maybe FilePath -> Maybe FilePath
-maybeFromRoot = fmap . fromRoot
+setBuild :: Options -> Config -> Dangerously IO Config
+setBuild opts conf = let path = root conf </> optBuildDir opts in do
+	there <- liftIO $ doesDirectoryExist path
+	unless there (error $ NoBuild path)
+	return conf{ _build = path }
+
+
+
+-- Profile loading
+
+setProfiles :: Options -> Config -> Dangerously IO Config
+setProfiles opts conf = let path = root conf </> optProfileDir opts in do
+	there <- liftIO $ doesDirectoryExist path
+	if there then do
+		names <- liftIO $ ls path
+		let files = map (path </>) names
+		(profs, warnings) <- merge <$> (liftIO $ mapM Profile.load files)
+		unless (null warnings) (warn $ ProfileWarnings warnings)
+		return conf{ _profiles = profs }
+		else error (NoProfiles path) >> return conf
+	where merge = foldr (\(p, ws) (ps, wss) -> (p:ps, ws++wss)) ([],[])
+
+
+
+-- | Range discovery
+
+setRange :: Options -> Config -> Dangerously IO Config
+setRange opts conf | optDetect opts && optRoot opts `startswith` src conf = do
+	let path = optRoot opts `from` src conf
+	let parts = splitPath path
+	let locations = catMaybes $ map fromString parts
+	let location = foldr focus nowhere locations
+	return $ use location
+                   | otherwise = return $ use nowhere
+	where use loc = let
+		lo = fromMaybe loc $ optStart opts
+		hi = fromMaybe loc $ optEnd opts
+		in conf{ _range = (lo, hi) }
+
+
+
+-- | Variable loading
+
+setVars :: Options -> Config -> Dangerously IO Config
+setVars opts conf = return conf{ _vars = optVars opts }
+
+
+
+-- Error and Warning handling
+
+type Dangerously = StateT ([ConfigError], [ConfigWarning])
+
+error :: ConfigError -> Dangerously IO ()
+error e = modify (\(es, ws) -> (e:es, ws))
+
+warn :: ConfigWarning -> Dangerously IO ()
+warn w = modify (\(es, ws) -> (es, w:ws))
+
+data ConfigError = NoRoot FilePath
+                 | CantDetect FilePath [FilePath]
+                 | NoSource FilePath
+                 | NoBuild FilePath
+                 | NoProfiles FilePath
+
+instance Show ConfigError where
+	show (NoRoot path) =
+		printf "ERROR: book root '%s' not found\n" path
+
+	show (CantDetect path dirs) =
+		"ERROR: can't detect book root.\n" ++
+		printf "Searched from: %s\n" path ++
+		printf "Looked for directories: %s\n" (join ", " dirs)
+
+	show (NoSource path) =
+		printf "ERROR: book source '%s' not found\n" path
+
+	show (NoBuild path) =
+		printf "ERROR: build directory '%s' not found\n" path
+
+	show (NoProfiles path) =
+		printf "ERROR: profile directory '%s' not found\n" path
+
+
+data ConfigWarning = ProfileWarnings [ProfileWarning]
+
+instance Show ConfigWarning where
+	show (ProfileWarnings ws) = join "\n" $ map show ws

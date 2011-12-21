@@ -1,91 +1,74 @@
 module Main where
 
--- TODO: Author support
--- TODO: Non-LaTeX template support
-
-import Prelude hiding ( catch )
-import Control.Exception ( catch )
 import Control.Monad ( when, unless )
 import Control.Monad.Reader ( ReaderT(runReaderT) )
-import Data.List.Utils ( startswith )
 import System.Console.GetOpt
 import System.Exit ( exitWith, ExitCode (..) )
 import System.Environment ( getArgs, getProgName )
 import System.IO ( hPutStrLn, stderr )
-import System.IO.Error
-    ( isUserError
-    , ioeGetLocation
-    , ioeGetFileName )
-import Text.Bookbuilder -- ( compile )
-import Text.Bookbuilder.Config ( Config(..), normalize )
-import Text.Bookbuilder.Template ( defaultTheme )
-import Text.Bookbuilder.Location ( Location(Location) )
+import Text.Bookbuilder -- TODO ( compile )
+import Text.Bookbuilder.Config ( Options(..), configure )
+import Text.Bookbuilder.Location ( Location )
 
--- | Data.List utilities
-intersects :: (Eq a) => [a] -> [a] -> Bool
-intersects xs ys = or [x `elem` ys | x <- xs]
-
--- | Defaults for command-line configuration
-defaultConfig :: Config
-defaultConfig = Config
-	{ confRoot        = ""
-	, confSourceDir   = "src"
-	, confTemplateDir = Nothing
-    , confTemplates   = []
-	, confTheme       = defaultTheme
-	, confOutputDest  = Nothing
-	, confDetect      = False
-	, confStart       = Location []
-	, confEnd         = Location []
-	, confHelp        = False
-	}
+defaultOptions :: Options
+defaultOptions = Options
+	{ optRoot       = ""
+	, optSourceDir  = "src"
+	, optProfileDir = "profiles"
+	, optBuildDir   = "build"
+	, optStart      = Nothing
+	, optEnd        = Nothing
+	, optDetect     = True
+    , optVars       = []
+	, optHelp       = False }
 
 -- | A list of functions, each transforming the options data structure
 -- | in response to a command-line option.
-options :: [OptDescr (Config -> IO Config)]
+options :: [OptDescr (Options -> IO Options)]
 options =
 	[ Option "s" ["src"]
-		(ReqArg (\arg opt -> return opt { confSourceDir = arg }) "DIR")
+		(ReqArg (\arg opt -> return opt { optSourceDir = arg }) "DIR")
 		"directory containing the book source files"
 
-	, Option "p" ["templates"]
-		(ReqArg (\arg opt -> return opt { confTemplateDir = Just arg }) "DIR")
-		"directory containing template files"
+	, Option "p" ["profiles"]
+		(ReqArg (\arg opt -> return opt { optProfileDir = arg }) "DIR")
+		"directory containing profiles to output"
 
-	, Option "t" ["theme"]
-		(ReqArg (\arg opt -> case parseTheme arg of
-			Left err -> ioError err
-			Right theme -> return opt{ confTheme = theme }) "THEME")
-		"the template theme to use"
+	, Option "o" ["build"]
+		(ReqArg (\arg opt -> return opt{ optBuildDir = arg }) "DIR")
+		"directory in which to place compiled files"
 
-	, Option "o" ["output"]
-		(ReqArg (\arg opt -> return opt{ confOutputDest = Just arg }) "FILE")
-		"destination for the compiled book (stdout if omitted)"
+	, Option "a" ["author"]
+		(ReqArg (\arg opt -> do
+            let vars = optVars opt
+            return opt{ optVars = ("author", arg):vars }) "NAME")
+		"the author template variable"
 
-	, Option "d" ["detect"]
-		(NoArg (\opt -> return opt{ confDetect = True }))
-		"detect the current book and location"
+	, Option "H" ["here", "nodetect"]
+		(NoArg (\opt -> return opt{ optDetect = True }))
+		"don't try to detect the book from the current location"
 
 	, Option "b" ["begin"]
 		(ReqArg (\arg opt -> case parseLoc arg of
 			Left err -> ioError err
-			Right loc -> return opt{ confStart=loc }) "LOC")
+			Right loc -> return opt{ optStart = Just loc }) "LOC")
 		"the section to start at, i.e. 01 or 2_3_1"
 
 	, Option "e" ["end"]
 		(ReqArg (\arg opt -> case parseLoc arg of
 			Left err -> ioError err
-			Right loc -> return opt{ confEnd=loc }) "LOC")
+			Right loc -> return opt{ optEnd = Just loc }) "LOC")
 		"the section to compile up to, i.e. 4 or 02_04"
 
 	, Option "n" ["only"]
 		(ReqArg (\arg opt -> case parseLoc arg of
 			Left err -> ioError err
-			Right loc -> return opt{ confStart=loc, confEnd=loc }) "LOC")
+			Right loc -> return opt{ optStart = Just loc
+                                   , optEnd = Just loc }) "LOC")
 		"the section to start and end at, compiling only its subsections"
 
 	, Option "h" ["help"]
-		(NoArg (\opt -> return opt { confHelp = True}))
+		(NoArg (\opt -> return opt { optHelp = True}))
 		"display this help"
 	]
 
@@ -97,23 +80,6 @@ parseLoc arg = case reads arg of
     _ -> Left $ userError msg
     where msg = "Please enter locations in the form of underscore-separated numbers, i.e. 3_1_5"
 
--- | Parse a template theme, ensuring that the name is valid
-parseTheme :: String -> Either IOError String
-parseTheme arg = if bad then Left err else Right arg where
-	invalidChars = "0123456789._-|"
-	invalid = "any" : map (:[]) invalidChars
-	bad = null arg || any (`startswith` arg) invalid
-	msg = "Themes may not be blank, start with 'any', nor start with any of: "
-	err = userError $ msg ++ invalidChars
-
-showError :: IOError -> IO ()
-showError err | isUserError err = do
-    putStr $ "Error: " ++ ioeGetLocation err
-    case ioeGetFileName err of
-        Nothing -> putStr "\n"
-        Just x -> putStrLn $ " (" ++ show x ++ ")"
-              | otherwise = print err
-
 -- | Main entry point
 -- | Parse and ensure command line arguments
 -- | Generate configuration environment
@@ -121,20 +87,27 @@ main :: IO ()
 main = do
 	name <- getProgName
 	argv <- getArgs
-	let (actions, args, errors) = getOpt Permute options argv
+	let (actions, args, optErrors) = getOpt Permute options argv
 
-	unless (null errors) $ do
-		mapM_ (\e -> hPutStrLn stderr (name ++ ": " ++ e)) errors
+	let die n = do
 		hPutStrLn stderr $ usageInfo name options
-		exitWith $ ExitFailure 2
+		exitWith $ ExitFailure n
 
-	let baseConfig = if null args
-		then defaultConfig
-		else defaultConfig{ confRoot = head args }
-	config <- foldl (>>=) (return baseConfig) actions
+	unless (null optErrors) $ do
+		mapM_ (\e -> hPutStrLn stderr (name ++ ": " ++ e)) optErrors
+		die 2
 
-	when (confHelp config) $ do
+	let baseOpts = if null args
+		then defaultOptions
+		else defaultOptions{ optRoot = head args }
+	opts <- foldl (>>=) (return baseOpts) actions
+
+	when (optHelp opts) $ do
 		putStrLn $ usageInfo name options
 		exitWith ExitSuccess
-	
-	catch (runReaderT compile =<< normalize config) showError
+
+	(normalized, warnings) <- configure opts
+	mapM_ (hPutStrLn stderr . show) warnings
+	case normalized of
+		(Left errs) -> mapM_ (hPutStrLn stderr . show) errs >> die 2
+		(Right config) -> runReaderT compile config

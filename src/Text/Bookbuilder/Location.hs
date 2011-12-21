@@ -1,14 +1,24 @@
 module Text.Bookbuilder.Location
-	( Location(Location)
+	( Location
+	, Range
 	, toList
-	, separators
+	, fromList
+	, fromString
+	, stripLocation
+	, stripLocation'
+	, splitString
+	, focus
+	, contract
+	, retract
+	, nowhere
 	) where
 
 import Data.List.Split ( splitOn )
 import Data.List.Utils ( join )
 import Data.String.Utils ( lstrip )
 
-data Location = Location { list :: [Int] }
+data Location = Location { _list :: [Int] }
+type Range = (Location, Location)
 
 -- NOTE: If one location is the beginning of another, they are 'equal'.
 -- Think of further depth in the Location as refinement.
@@ -18,17 +28,57 @@ instance Eq Location where
 instance Ord Location where
 	xs <= ys = common xs ys <= common ys xs
 
-common :: Location -> Location -> [Int]
-common xs ys = take enough $ list xs
-	where enough = min (length $ list xs) (length $ list ys)
+
+
+-- | Exported behavior
 
 toList :: Location -> [Int]
-toList = list
+toList = _list
+
+fromList :: [Int] -> Location
+fromList = Location
+
+splitString :: String -> (Maybe Location, String)
+splitString str = splitString' $ reads str where
+	splitString' [] = (Nothing, str)
+	splitString' ((loc, rest):_) = (Just loc, rest)
+
+fromString :: String -> Maybe Location
+fromString = fst . splitString
+
+stripLocation :: String -> String
+stripLocation = snd . splitString
+
+stripLocation' :: String -> String
+stripLocation' = dropWhile (`elem` separators) . stripLocation
+
+focus :: Location -> Location -> Location
+focus (Location xs) (Location ys) = Location $ xs ++ ys
+
+contract :: Location -> Int -> Location
+contract (Location xs) x = Location $ xs ++ [x]
+
+retract :: Location -> Location
+retract (Location []) = Location []
+retract (Location xs) = Location $ init xs
+
+nowhere :: Location
+nowhere = Location []
 
 separators :: String
 separators = " .,;:|-_"
 
--- | Location reading and showing
+
+
+-- | Helpers
+
+common :: Location -> Location -> [Int]
+common xs ys = take enough $ toList xs
+	where enough = min (length $ toList xs) (length $ toList ys)
+
+
+
+-- | Reading and Showing
 
 instance Show Location where
 	show (Location xs) = "<" ++ join "|" (map show xs) ++ ">"

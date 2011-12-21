@@ -1,34 +1,32 @@
 module Text.Bookbuilder.FilePath where
--- TODO: exports
 
 import Control.Applicative ( (<*>) )
+import Control.Monad.Loops ( allM )
 import Data.Functor ( (<$>) )
 import Data.List ( sort )
-import Data.List.Split ( split, startsWithOneOf )
 import Data.List.Utils ( startswith )
-import Data.String.Utils ( join )
-import Text.Bookbuilder.Location ( Location(Location), separators )
 import System.Directory
-	( getCurrentDirectory
-	, getDirectoryContents
-	, canonicalizePath
+	( canonicalizePath
 	, doesDirectoryExist
-	, doesFileExist )
+	, doesFileExist
+	, getCurrentDirectory
+	, getDirectoryContents )
 import System.FilePath.Posix
 	( (</>)
 	, (<.>)
 	, isRelative
 	, makeRelative
-	, dropExtension
 	, hasExtension
-	, splitPath
-	, takeFileName
-	, dropTrailingPathSeparator )
+	, takeDirectory
+	, takeFileName )
 import System.Posix.Files ( fileSize, getFileStatus )
 
+from :: FilePath -> FilePath -> FilePath
+from a b | b `startswith` a = ""
+         | otherwise = makeRelative b a
+
 ls :: FilePath -> IO [FilePath]
-ls path = (map (path </>) . sort . filter isVisible) <$>
-	getDirectoryContents path
+ls path = (sort . filter isVisible) <$> getDirectoryContents path
 
 isVisible :: FilePath -> Bool
 isVisible = not . startswith "." . takeFileName
@@ -43,23 +41,15 @@ offerExtension :: String -> FilePath -> FilePath
 offerExtension ext p | hasExtension p = p
                      | otherwise = p <.> ext
 
-canonicalize :: FilePath -> IO FilePath
-canonicalize = (canonicalizePath =<<) . unrel where
+canonicalizeHere :: FilePath -> IO FilePath
+canonicalizeHere = (canonicalizePath =<<) . unrel where
 	unrel p | isRelative p = (</> p) <$> getCurrentDirectory
 	        | otherwise = return p
 
-from :: FilePath -> FilePath -> FilePath
-from a b = if a == b then "" else makeRelative b a
-
-pathLocation :: FilePath -> Location
-pathLocation = Location . map index . splitPath where
-	index = takeInt . takeFileName . dropTrailingPathSeparator
-	takeInt = headOr 1 . map fst . reads
-	headOr a xs = if null xs then a else head xs
-
-pathTitle :: FilePath -> String
-pathTitle = deCamel . dropExtension . dropIndex . filePart where
-	filePart = takeFileName . dropTrailingPathSeparator
-	dropable = separators ++ ['0'..'9']
-	dropIndex = dropWhile (`elem` dropable)
-	deCamel = join " " . split (startsWithOneOf ['A'..'Z'])
+ancestorWith :: FilePath -> [FilePath] -> IO (Maybe FilePath)
+ancestorWith path children = checksOut >>= ancestorWith' where
+	checksOut = allM (exists . (path </>)) children
+	ancestorWith' True = return $ Just path
+	ancestorWith' False | path /= next = ancestorWith next children
+	ancestorWith' _ = return Nothing
+	next = takeDirectory path
