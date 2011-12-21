@@ -212,8 +212,8 @@ instance Show ConfigError where
 
 	show (CantDetect path dirs) =
 		"ERROR: can't detect book root.\n" ++
-		printf "Searched from: %s\n" path ++
-		printf "Looked for directories: %s\n" (join ", " dirs)
+		printf "\tSearched from: %s\n" path ++
+		printf "\tLooked for directories: %s\n" (join ", " dirs)
 
 	show (NoSource path) =
 		printf "ERROR: book source '%s' not found\n" path

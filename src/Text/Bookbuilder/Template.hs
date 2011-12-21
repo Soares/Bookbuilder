@@ -99,6 +99,6 @@ data TemplateError = NoParse FilePath ParseError
 instance Show TemplateError where
 	show (NoParse f e) = let (template, profile) = splitFileName f in
 		printf "WARNING: Could not parse template %s\n" template ++
-		printf "Error was: %s\n" (show e) ++
-		printf "In the profile: %s\n" profile
-		"The error will not be used."
+		printf "\tError was: %s\n" (show e) ++
+		printf "\tIn the profile: %s\n" profile
+		"\tThe template will not be used."

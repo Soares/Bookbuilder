@@ -34,6 +34,7 @@ import Text.Bookbuilder.Template
 	, get
 	, isTop )
 import qualified Text.Bookbuilder.Template as Template
+import qualified Text.Bookbuilder.PDF as PDF
 import Text.Printf ( printf )
 
 styleFile, resourceFile :: String
@@ -48,8 +49,9 @@ data Profile = Profile
 	} deriving Eq
 
 instance Show Profile where
-	show p = printf "%s(%s→%s)-%s" name (_buildExt p) ext (show $ _templates p)
-		where (name, ext) = splitExtension $ _dest p
+	show p = printf "%s(%s→%s)" name from to where
+		(name, to) = splitExtension $ _dest p
+		from = takeExtension $ _buildExt p
 
 
 
@@ -77,10 +79,13 @@ lift prof leaf = Pandoc.render to . Pandoc.parse from where
 	to = Pandoc.writerName $ _buildExt prof
 
 write :: Profile -> FilePath -> String -> IO ()
-write prof dest = write' dest where
-	write' = if to == from then writeFile else process prof to from
+write prof dest = output where
+	output | (to, from) == ("pdf", "latex") = PDF.outputLaTeX dest
+	       | to == from = writeFile dest
+		   | otherwise = Pandoc.write to (_extra prof) dest . parse
 	from = Pandoc.readerName $ _buildExt prof
 	to = Pandoc.writerName $ _dest prof
+	parse = Pandoc.parse from
 
 
 -- | Load helpers
@@ -140,14 +145,6 @@ extraData path _ (s, r) = let name = takeFileName path in do
 
 
 
--- | Write helpers
-
-process :: Profile -> String -> String -> FilePath -> String -> IO ()
-process prof to from path content = Pandoc.write to (_extra prof) path parsed
-	where parsed = Pandoc.parse from content
-
-
-
 -- | Warnings
 
 type Warnable = StateT [ProfileWarning]
@@ -168,22 +165,22 @@ instance Show ProfileWarning where
 
 	show (UnrecognizedFormat name) = "WARNING: " ++
 		printf "Unrecognized output format: %s\n" (takeExtension name) ++
-		printf "In profile: %s\n" name ++
-		"Output format .tex will be used."
+		printf "\tIn profile: %s\n" name ++
+		"\tOutput format .tex will be used."
 
 	show (MultipleTops name tops) = "WARNING: " ++
 		printf "Found multiple top-level templates in profile: %s\n" name ++
-		printf "The following templates will always be ignored: %s\n"
+		printf "\tThe following templates will always be ignored: %s\n"
 			(join ", " $ map Template.name $ tail tops)
 
 	show (NonUniformExtensions name exts) = "WARNING: " ++
 		printf "Found multiple extensions in profile: %s\n" name ++
-		printf "Using '%s', ignoring %s\n" (head exts)
+		printf "\tUsing '%s', ignoring %s\n" (head exts)
 			(join ", " $ tail exts)
 
 	show (NoExtension name tmpls) = "WARNING: " ++
 		printf "Unrecognized extension for profile: %s\n" name ++
-		printf "Arising from the files: %s\n"
+		printf "\tArising from the files: %s\n"
 			(join ", " $ map Template.name tmpls)
 
 	show (IgnoringStyle name) = "WARNING: " ++

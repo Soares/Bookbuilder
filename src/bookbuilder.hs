@@ -119,5 +119,8 @@ main = do
 		
 execute :: Bool -> Config -> IO ()
 execute debug config = do
-	tgts <- runReaderT targets config
-	mapM_ (output debug) tgts
+	ts <- runReaderT targets config
+	mapM_ execute' ts where
+	execute' target = do
+		output debug target
+		putStrLn $ "Created " ++ show target

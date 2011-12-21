@@ -16,6 +16,7 @@ import Text.Pandoc ( Pandoc
                    , writeODT
                    , writeLaTeX )
 import qualified Data.ByteString.Lazy as B
+import qualified Text.Bookbuilder.PDF as PDF
 
 defaultReader :: ParserState -> String -> Pandoc
 defaultReader = readMarkdown
@@ -32,16 +33,19 @@ render format = w defaultWriterOptions where
 	w = fromMaybe defaultWriter (lookup format writers)
 
 write :: String -> Maybe String -> FilePath -> Pandoc -> IO ()
-write format extra dest content = case lookup format writers of
+write format extra dest doc = case lookup format writers of
+	-- TODO: Make this take a configuration file instead of (Maybe String)
+	Nothing | format == "pdf" ->
+		PDF.outputLaTeX dest $ writeLaTeX ops doc
 	Nothing | format == "epub" ->
-		writeEPUB extra ops content
+		writeEPUB extra ops doc
 		>>= B.writeFile (encodeString dest)
 	Nothing | format == "odt" ->
-		writeODT extra ops content
+		writeODT extra ops doc
 		>>= B.writeFile (encodeString dest)
-	Nothing | format == "-" -> putStr $ guess ops content
-	Nothing -> writeFile dest $ guess ops content
-	Just r -> writeFile dest $ r ops content
+	Nothing | format == "-" -> putStr $ guess ops doc
+	Nothing -> writeFile dest $ guess ops doc
+	Just r -> writeFile dest $ r ops doc
 	where (guess, ops) = (defaultWriter, defaultWriterOptions)
 
 readerName :: FilePath -> String
@@ -87,6 +91,7 @@ writerName x = case takeExtension (map toLower x) of
 	".odt"      -> "odt"
 	".epub"     -> "epub"
 	".org"      -> "org"
+	".pdf"      -> "pdf"
 	['.',y] | y `elem` ['1'..'9'] -> "man"
 	".-"        -> "-"
 	_           -> ""
