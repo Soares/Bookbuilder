@@ -31,7 +31,8 @@ import Text.Bookbuilder.Section
 	, valid
 	, subsections
 	, contextualize
-	, decide
+	, reduce
+	, fill
 	, filepath )
 import Text.Bookbuilder.Variables ( variables )
 
@@ -55,13 +56,13 @@ discover' s z = let z' = insert (Node s []) z in do
 populate :: Structure -> Configged IO Book
 populate z = let (Node s _) = tree z in do
 	vars <- asks $ variables z
-	vars' <- case gender s of
+	s' <- case gender s of
 		File -> do
 			file <- asks . filepath $ sections z
 			body <- liftIO $ readFile file
-			return $ ("body", body):vars
-		_ -> return vars
-	let z' = setLabel (contextualize s vars') z
+			return $ s `fill` body
+		_ -> return s
+	let z' = setLabel (contextualize s' vars) z
 	fromMaybe z' <$> populate' (children z')
 
 populate' :: TreePos Empty Section -> Configged IO (Maybe Structure)
@@ -70,8 +71,8 @@ populate' z = case nextTree z of
 	Just c -> populate c >>= populate' . nextSpace
 
 flatten :: Profile -> Book -> String
-flatten prof z = Section.reduce prof (s' : above z) where
-	s' = if gender s == File then s else decide "body" body s
+flatten prof z = reduce prof (s' : above z) where
+	s' = if gender s == File then s else s `fill` body
 	body = flatten' prof $ children z
 	s = label z
 

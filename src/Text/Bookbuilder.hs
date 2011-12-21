@@ -9,26 +9,35 @@ where
 -- TODO: Test on multi/level/src
 -- TODO: Test inputformats
 -- TODO: add variable opts
+-- TODO: we're eating a lot of template lines (and putting nbsps in them.)
+--		obviously we're misusing pandoc somehow
+-- TODO: add debug opt
+-- TODO: add silent option
+-- TODO: add 'cautious' option
+-- TODO: print status updates
+-- TODO: hlint
 
+import Control.Monad ( when )
 import Control.Monad.Trans ( liftIO )
-import Control.Monad.Reader ( asks )
+import Control.Monad.Reader ( ask, asks )
+import System.FilePath.Posix ( (<.>) )
 import Text.Bookbuilder.Config ( Configged, dest, profiles )
-import Text.Bookbuilder.Profile ( Profile )
-import qualified Text.Bookbuilder.Profile as Profile
+import Text.Bookbuilder.Profile ( Profile, write, buildFormat )
 import Text.Bookbuilder.Book ( Book, base, discover, populate, flatten )
 
-write :: Profile -> String -> Configged IO ()
-write prof content = do
-	destination <- asks $ dest prof
-	liftIO $ Profile.write prof destination content
+type Target = (FilePath, Profile, Book)
 
-output :: Book -> Profile -> Configged IO ()
-output struct prof = write prof $ flatten prof struct
+output :: Bool -> Target -> IO ()
+output debug (path, prof, book) = do
+	when debug $ writeFile (path <.> buildFormat prof) text
+	write prof path text
+	where text = flatten prof book
 
-compile :: Configged IO ()
-compile = do
+targets :: Configged IO [Target]
+targets = do
 	root <- liftIO =<< asks base
 	filled <- discover root
-	populated <- populate filled
+	book <- populate filled
 	profs <- asks profiles
-	mapM_ (output populated) profs
+	config <- ask
+	return [(dest prof config, prof, book) | prof <- profs]

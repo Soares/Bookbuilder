@@ -55,6 +55,7 @@ data Options = Options
 	, optEnd        :: Maybe Location
 	, optDetect     :: Bool
 	, optVars       :: [(String, String)]
+	, optDebug      :: Bool
 	, optHelp       :: Bool
 	} deriving Show
 
@@ -156,8 +157,7 @@ setProfiles :: Options -> Config -> Dangerously IO Config
 setProfiles opts conf = let path = root conf </> optProfileDir opts in do
 	there <- liftIO $ doesDirectoryExist path
 	if there then do
-		names <- liftIO $ ls path
-		let files = map (path </>) names
+		files <- liftIO $ ls path
 		(profs, warnings) <- merge <$> (liftIO $ mapM Profile.load files)
 		unless (null warnings) (warn $ ProfileWarnings warnings)
 		return conf{ _profiles = profs }

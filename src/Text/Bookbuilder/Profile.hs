@@ -2,8 +2,10 @@ module Text.Bookbuilder.Profile
 	( Profile
 	, ProfileWarning
 	, filename
+	, buildFormat
 	, load
 	, template
+	, lift
 	, write
 	, styleFile
 	, resourceFile
@@ -19,6 +21,7 @@ import Data.Maybe ( catMaybes )
 import System.Directory ( doesDirectoryExist, doesFileExist )
 import System.FilePath.Posix
 	( (</>)
+	, replaceExtension
 	, splitExtension
 	, takeFileName
 	, takeExtension )
@@ -39,13 +42,13 @@ resourceFile = "resources.odt"
 
 data Profile = Profile
 	{ _dest       :: String
-	, _from       :: String
+	, _buildExt   :: String
 	, _extra      :: Maybe String
 	, _templates  :: [Template]
 	} deriving Eq
 
 instance Show Profile where
-	show p = printf "%s(%s→%s)-%s" name (_from p) ext (show $ _templates p)
+	show p = printf "%s(%s→%s)-%s" name (_buildExt p) ext (show $ _templates p)
 		where (name, ext) = splitExtension $ _dest p
 
 
@@ -54,6 +57,9 @@ instance Show Profile where
 
 filename :: Profile -> FilePath
 filename = _dest
+
+buildFormat :: Profile -> String
+buildFormat = takeExtension . _buildExt
 
 load :: FilePath -> IO (Profile, [ProfileWarning])
 load path = do
@@ -65,38 +71,47 @@ load path = do
 template :: Profile -> Location -> Template
 template prof loc = _templates prof `get` loc
 
+lift :: Profile -> FilePath -> String -> String
+lift prof leaf = Pandoc.render to . Pandoc.parse from where
+	from = Pandoc.readerName leaf
+	to = Pandoc.writerName $ _buildExt prof
+
 write :: Profile -> FilePath -> String -> IO ()
 write prof dest = write' dest where
 	write' = if to == from then writeFile else process prof to from
+	from = Pandoc.readerName $ _buildExt prof
 	to = Pandoc.writerName $ _dest prof
-	from = _from prof
 
 
 -- | Load helpers
 
 emptyProfile :: FilePath -> Profile
 emptyProfile path = Profile{ _dest = takeFileName path
-                           , _from = Pandoc.readerName path
+                           , _buildExt = takeExtension path
                            , _extra = Nothing
                            , _templates = [] }
 
 loadDir :: FilePath -> Warnable IO Profile
 loadDir path = do
 	let ignored = [styleFile, resourceFile]
-	files <- filter (not . (`elem` ignored)) <$> liftIO (ls path)
+	allfiles <- liftIO (ls path)
+	let files = filter ((not . (`elem` ignored)) . takeFileName) allfiles
 	templates <- catMaybes <$> mapM loadTemplate files
 	format <- pickFormat path templates
 	hasStyle <- liftIO $ doesFileExist $ path </> styleFile
 	hasResources <- liftIO $ doesFileExist $ path </> resourceFile
-	extra <- extraData path format (hasStyle, hasResources)
-	return Profile{ _dest = takeFileName path
-	              , _from = Pandoc.readerName format
+	let to = Pandoc.writerName path
+	let name = takeFileName path
+	when (null to) (warn $ UnrecognizedFormat name)
+	extra <- extraData path to (hasStyle, hasResources)
+	return Profile{ _dest = name
+	              , _buildExt = format
 	              , _extra = extra
 	              , _templates = templates }
 
 loadTemplate :: FilePath -> Warnable IO (Maybe Template)
-loadTemplate path = let name = takeFileName path in do
-	result <- liftIO $ Template.load name
+loadTemplate path = do
+	result <- liftIO $ Template.load path
 	case result of
 		Left err -> warn (BadTemplate err) >> return Nothing
 		Right tmpl -> return $ Just tmpl
@@ -111,9 +126,9 @@ pickFormat path tmpls = do
 	when (length tops > 1) (warn $ MultipleTops name tops)
 	when (length exts > 1) (warn $ NonUniformExtensions name exts)
 	let fullname = if null tops then "" else Template.name $ head tops
-	let result = Pandoc.readerName $ if null exts then fullname else head exts
-	when (null result) (warn $ NoExtension path tmpls)
-	return result
+	let result = if null exts then fullname else head exts
+	when (null $ takeExtension result) (warn $ NoExtension path tmpls)
+	return $ replaceExtension name result
 
 extraData :: FilePath -> String -> (Bool, Bool) -> Warnable IO (Maybe String)
 extraData path "epub" (True, _) = Just <$> liftIO (readFile $ path </> styleFile)
@@ -141,6 +156,7 @@ warn :: ProfileWarning -> Warnable IO ()
 warn = modify . (:)
 
 data ProfileWarning = BadTemplate TemplateError
+                    | UnrecognizedFormat String
                     | MultipleTops String [Template]
 					| NonUniformExtensions String [String]
 					| NoExtension String [Template]
@@ -149,6 +165,11 @@ data ProfileWarning = BadTemplate TemplateError
 
 instance Show ProfileWarning where
 	show (BadTemplate te) = show te
+
+	show (UnrecognizedFormat name) = "WARNING: " ++
+		printf "Unrecognized output format: %s\n" (takeExtension name) ++
+		printf "In profile: %s\n" name ++
+		"Output format .tex will be used."
 
 	show (MultipleTops name tops) = "WARNING: " ++
 		printf "Found multiple top-level templates in profile: %s\n" name ++
@@ -161,9 +182,8 @@ instance Show ProfileWarning where
 			(join ", " $ tail exts)
 
 	show (NoExtension name tmpls) = "WARNING: " ++
-		printf "Could not determine extension for profile: %s\n" name ++
-		"The default reader will be used.\n" ++
-		printf "The following templates provided the ambiguity: %s\n"
+		printf "Unrecognized extension for profile: %s\n" name ++
+		printf "Arising from the files: %s\n"
 			(join ", " $ map Template.name tmpls)
 
 	show (IgnoringStyle name) = "WARNING: " ++

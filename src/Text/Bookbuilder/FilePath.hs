@@ -26,7 +26,8 @@ from a b | b `startswith` a = ""
          | otherwise = makeRelative b a
 
 ls :: FilePath -> IO [FilePath]
-ls path = (sort . filter isVisible) <$> getDirectoryContents path
+ls path = (map (path </>) . sort . filter isVisible) <$>
+	getDirectoryContents path
 
 isVisible :: FilePath -> Bool
 isVisible = not . startswith "." . takeFileName

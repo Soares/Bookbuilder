@@ -57,7 +57,11 @@ readerName x = case takeExtension (map toLower x) of
 	".textile"  -> "textile"
 	".native"   -> "native"
 	".json"     -> "json"
-	_           -> ""
+	".markdown" -> "markdown"
+	".md"       -> "markdown"
+	".text"      -> "markdown"
+	".txt"       -> "markdown"
+	_            -> ""
 
 writerName :: FilePath -> String
 writerName x = case takeExtension (map toLower x) of

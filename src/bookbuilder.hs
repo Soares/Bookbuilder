@@ -7,7 +7,7 @@ import System.Exit ( exitWith, ExitCode (..) )
 import System.Environment ( getArgs, getProgName )
 import System.IO ( hPutStrLn, stderr )
 import Text.Bookbuilder -- TODO ( compile )
-import Text.Bookbuilder.Config ( Options(..), configure )
+import Text.Bookbuilder.Config ( Options(..), configure, Config )
 import Text.Bookbuilder.Location ( Location )
 
 defaultOptions :: Options
@@ -18,8 +18,9 @@ defaultOptions = Options
 	, optBuildDir   = "build"
 	, optStart      = Nothing
 	, optEnd        = Nothing
-	, optDetect     = True
     , optVars       = []
+	, optDetect     = True
+	, optDebug      = False
 	, optHelp       = False }
 
 -- | A list of functions, each transforming the options data structure
@@ -43,6 +44,10 @@ options =
             let vars = optVars opt
             return opt{ optVars = ("author", arg):vars }) "NAME")
 		"the author template variable"
+
+	, Option "d" ["debug"]
+		(NoArg (\opt -> return opt{ optDebug = True }))
+		"write the intermediary files, i.e. default.pdf.tex"
 
 	, Option "H" ["here", "nodetect"]
 		(NoArg (\opt -> return opt{ optDetect = True }))
@@ -110,4 +115,9 @@ main = do
 	mapM_ (hPutStrLn stderr . show) warnings
 	case normalized of
 		(Left errs) -> mapM_ (hPutStrLn stderr . show) errs >> die 2
-		(Right config) -> runReaderT compile config
+		(Right config) -> execute (optDebug opts) config
+		
+execute :: Bool -> Config -> IO ()
+execute debug config = do
+	tgts <- runReaderT targets config
+	mapM_ (output debug) tgts

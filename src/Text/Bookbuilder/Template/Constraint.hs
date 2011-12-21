@@ -24,8 +24,8 @@ type Constraints = Limit [Constraint]
 instance Eq Constraint where (==) = (==) `on` _order
 instance Ord Constraint where (<=) = (<=) `on` _order
 instance Show Constraint where
-	show (Constraint Unbounded _) = "@"
-	show (Constraint _ fn) = concatMap (\x -> if fn x then "!" else ":") [1..7]
+	show (Constraint Unbounded _) = "∞"
+	show (Constraint _ fn) = concatMap (\x -> if fn x then "✓" else "✗") [1..7]
 
 
 
@@ -81,18 +81,23 @@ unconstrained = anymarker >> return Unbounded
 
 
 -- | Constraint aggregation
-constraints :: GenParser Char st [Constraint]
-constraints = many constraint
+constraints, holeConstraints, numConstraints :: GenParser Char st [Constraint]
+constraints = (try holeConstraints) <|> (try numConstraints) <|> (return [])
+holeConstraints = do
+    try (underscore >> quote) <|> underscore <|> quote
+    rest <- constraints
+    return (fullConstraint : rest)
+numConstraints = do
+    cs <- sepEndBy1 bounded quote
+    rest <- constraints
+    return (cs ++ rest)
 
 
 -- | Constraint parsers
-constraint, bounded, unbounded, nums, rng, lo, hi, single
-    :: GenParser Char st Constraint
+bounded, nums, rng, lo, hi, single :: GenParser Char st Constraint
 
--- One level of constraint, unbounded if empty (1|4-6|10, etc.)
-constraint = try bounded <|> unbounded
+-- One level of constraint (1|4-6|10, etc.)
 bounded = foldr combine emptyConstraint <$> sepBy1 nums pipe
-unbounded = underscore >> return fullConstraint
 
 -- A block of numbers
 nums = try rng <|> try lo <|> try hi <|> single
@@ -117,15 +122,17 @@ single = num >>= \n -> return $ Constraint (Bounded 1) (== n)
 num :: GenParser Char st Int
 num = fmap read $ many1 numchar
 
+numchar :: GenParser Char st Char
+numchar = oneOf ['0'..'9']
+
 
 -- | Special strings
 anymarker :: GenParser Char st String
 anymarker = mapM char "any"
 
-
 -- | Names for simple characters
-hyphen, pipe, numchar, underscore :: GenParser Char st Char
-hyphen = char '-'
-pipe = oneOf "|"
-underscore = char '_'
-numchar = oneOf ['0'..'9']
+hyphen, pipe, underscore, quote :: GenParser Char st ()
+hyphen = char '-' >> return ()
+pipe = char '|' >> return ()
+underscore = char '_' >> return ()
+quote = oneOf "'" >> return ()
