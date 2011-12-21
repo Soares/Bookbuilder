@@ -22,7 +22,7 @@ import Control.Monad.State ( StateT, runStateT, modify )
 import Control.Monad.Trans ( liftIO )
 import Data.Functor ( (<$>) )
 import Data.Maybe ( fromMaybe, mapMaybe )
-import Data.List.Utils ( join, startswith )
+import Data.List.Utils ( join )
 import System.Directory ( doesDirectoryExist )
 import System.FilePath.Posix
 	( (</>), (<.>)
@@ -169,12 +169,13 @@ setProfiles opts conf = let path = root conf </> optProfileDir opts in do
 -- | Range discovery
 
 setRange :: Options -> Config -> Dangerously IO Config
-setRange opts conf | optDetect opts && optRoot opts `startswith` src conf = do
+setRange opts conf | optDetect opts = do
 	let path = optRoot opts `from` src conf
-	let parts = splitPath path
+	let path' = if path == optRoot opts then "" else path
+	let parts = splitPath path'
 	let locations = mapMaybe fromString parts
 	let location = foldr focus nowhere locations
-	return $ use location
+	return $ use $ if null path' then nowhere else location
                    | otherwise = return $ use nowhere
 	where use loc = let
 		lo = fromMaybe loc $ optStart opts

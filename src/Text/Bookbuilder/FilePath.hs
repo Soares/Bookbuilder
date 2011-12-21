@@ -22,7 +22,7 @@ import System.FilePath.Posix
 import System.Posix.Files ( fileSize, getFileStatus )
 
 from :: FilePath -> FilePath -> FilePath
-from a b | b `startswith` a = ""
+from a b | makeRelative b a == "." = ""
          | otherwise = makeRelative b a
 
 ls :: FilePath -> IO [FilePath]

@@ -32,7 +32,7 @@ module Text.Bookbuilder ( Target, targets, output ) where
 import Control.Monad ( when )
 import Control.Monad.Trans ( liftIO )
 import Control.Monad.Reader ( ask, asks )
-import System.FilePath.Posix ( (</>), (<.>), takeDirectory )
+import System.FilePath.Posix ( (<.>) )
 import Text.Bookbuilder.Config ( Configged, dest, profiles )
 import Text.Bookbuilder.Profile ( Profile, write, buildFormat )
 import Text.Bookbuilder.Book ( Book, base, discover, populate, flatten )
@@ -42,7 +42,7 @@ data Target = Target { _destination :: FilePath
                      , _contents    :: Book }
 
 instance Show Target where
-	show t = takeDirectory (_destination t) </> show (_profile t)
+	show t = (_destination t) ++ " [" ++ show (_profile t) ++ "]"
 
 output :: Bool -> Target -> IO ()
 output debug (Target path prof book) = do

@@ -8,7 +8,8 @@ import System.Environment ( getArgs, getProgName )
 import System.IO ( hPutStrLn, stderr )
 import Text.Bookbuilder ( targets, output )
 import Text.Bookbuilder.Config ( Options(..), configure, Config )
-import Text.Bookbuilder.Location ( Location )
+import Text.Bookbuilder.Location ( Location, nowhere )
+-- TODO: remove parseLoc boilerplate
 
 defaultOptions :: Options
 defaultOptions = Options
@@ -54,22 +55,28 @@ options =
 		"don't try to detect the book from the current location"
 
 	, Option "b" ["begin"]
-		(ReqArg (\arg opt -> case parseLoc arg of
-			Left err -> ioError err
-			Right loc -> return opt{ optStart = Just loc }) "LOC")
+		(OptArg (\marg opt -> case marg of
+			Nothing -> return opt{ optStart = Just nowhere }
+			Just arg -> case parseLoc arg of
+				Left err -> ioError err
+				Right loc -> return opt{ optEnd = Just loc }) "LOC")
 		"the section to start at, i.e. 01 or 2_3_1"
 
 	, Option "e" ["end"]
-		(ReqArg (\arg opt -> case parseLoc arg of
-			Left err -> ioError err
-			Right loc -> return opt{ optEnd = Just loc }) "LOC")
+		(OptArg (\marg opt -> case marg of
+			Nothing -> return opt{ optStart = Just nowhere }
+			Just arg -> case parseLoc arg of
+				Left err -> ioError err
+				Right loc -> return opt{ optEnd = Just loc }) "LOC")
 		"the section to compile up to, i.e. 4 or 02_04"
 
 	, Option "n" ["only"]
-		(ReqArg (\arg opt -> case parseLoc arg of
-			Left err -> ioError err
-			Right loc -> return opt{ optStart = Just loc
-                                   , optEnd = Just loc }) "LOC")
+		(OptArg (\marg opt -> case marg of
+			Nothing -> return opt{ optStart = Just nowhere }
+			Just arg -> case parseLoc arg of
+				Left err -> ioError err
+				Right loc -> return opt{ optStart = Just loc
+				                       , optEnd = Just loc }) "LOC")
 		"the section to start and end at, compiling only its subsections"
 
 	, Option "h" ["help"]
