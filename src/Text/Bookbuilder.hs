@@ -19,12 +19,14 @@ module Text.Bookbuilder ( Target, targets, output ) where
 --			make sure that environment starts with the base position
 --		add a 'silent' option
 --		add a flag to signify "this is src, everything else is one level up"
+--		move to a different (preferably compiled) template system
 --
 -- CHECK:
 --		whether or not we need newlines at the end of templates
 --			case in point: remove newlines from default.epub md files
 -- Test:
 --		on a book where src/ is a file
+--		with --src="." (how many things does that break?)
 --		on a book where src is given as multiple/level/src/
 --		on a book with internally different input formats
 --		on a book where src/ is above the book
