@@ -1,19 +1,15 @@
-module Options ( Options, configure {-, environment-} ) where
+module Options
+    ( Options(..)
+    , configure
+    ) where
 
-import Control.Monad ( when, unless )
-import Control.Monad.Loops ( concatM )
-import Control.Monad.Error ( ErrorT, Error(..), throwError )
-import Control.Monad.State ( State )
-import Control.Monad.Reader ( ReaderT(runReaderT) )
-import Dangerous ( warn )
-import Data.Focus ( Focus, parse, unfocused )
+import Control.Dangerous ( Dangerous, warn, throw, stop )
+import Control.Monad
+import Control.Monad.Loops
+import Data.Focus
+import Data.List
 import System.Console.GetOpt
-import System.Exit ( exitWith, ExitCode (..) )
-import System.Environment ( getArgs, getProgName )
-import System.IO ( hPutStrLn, stderr )
--- import Text.Bookbuilder ( targets, output )
--- import Text.Bookbuilder.Config ( Options(..), configure, Config )
--- import Text.Bookbuilder.Location ( Location, nowhere )
+import Text.Printf
 
 
 data Options = Options
@@ -64,22 +60,22 @@ options =
 
     , Option "t" ["target"]
         (ReqArg (\arg opt -> return
-			opt{ optTargets = arg : optTargets opt }) "PROF")
+            opt{ optTargets = arg : optTargets opt }) "PROF")
         "the target to be built (may be specified multiple times)"
 
     , Option "b" ["begin"]
         (OptArg (\arg opt -> maybe (return unfocused) parseLOC arg >>=
-			\foc -> return opt{ optStart = Just foc }) "LOC")
+            \foc -> return opt{ optStart = Just foc }) "LOC")
         "the section to start at, i.e. 01-02 or 2.3.1"
 
     , Option "e" ["end"]
         (OptArg (\arg opt -> maybe (return unfocused) parseLOC arg >>=
-			\foc -> return opt{ optEnd = Just foc }) "LOC")
+            \foc -> return opt{ optEnd = Just foc }) "LOC")
         "the section to build up to, i.e. 4 or 02_04"
 
     , Option "n" ["only"]
         (OptArg (\arg opt -> maybe (return unfocused) parseLOC arg >>=
-			\foc -> return opt{ optStart = Just foc, optEnd = Just foc }) "LOC")
+            \foc -> return opt{ optStart = Just foc, optEnd = Just foc }) "LOC")
         "the specific section to compile"
 
     , Option [] ["nodetect"]
@@ -96,25 +92,45 @@ options =
     ]
 
 
--- | Parse a LOC into a Focus, i.e. 03-01-01 -> <3|3|1>
 parseLOC :: String -> Dangerous Focus
 parseLOC arg = case parse arg of
     ((f, ""):_) -> return f
-    _ -> throwError $ ParseError msg
-    where msg = "Please enter locations in the form of underscore-separated numbers, i.e. 3_1_5"
+    _ -> throw $ CantParseLoc arg
 
 
-configure :: [String] -> Dangerous Options
-configure argv = do
-    let (actions, args, optErrors) = getOpt Permute options argv
-    unless (null optErrors) (throwError $ FormatErrors optErrors)
-    when (length args > 1) (warn $ ExtraArguments $ tail args)
-    let options = if null args
-        then defaultOptions
-        else defaultOptions{ optRoot = head args }
-    concatM actions options
+addArgs :: [String] -> Options -> Dangerous Options
+addArgs [] opts = return opts
+addArgs [x] opts = return opts{ optRoot = x }
+addArgs (x:xs) opts = (mapM_ (warn . ExtraArg) xs) >> addArgs [x] opts 
 
-type Dangerous = ErrorT OptionError (State [OptionWarning])
-data OptionError = FormatErrors [String] | ParseError String deriving Show
-data OptionWarning = ExtraArguments [String] deriving Show
-instance Error OptionError where strMsg = ParseError
+
+configure :: String -> [String] -> Dangerous Options
+configure progname argv = do
+    let (actions, args, unrecognized, errors) = getOpt' Permute options argv
+    unless (null unrecognized) $
+        mapM_ (warn . Unrecognized) unrecognized
+    unless (null errors) $
+        throw (OptErrors errors)
+    config <- concatM actions =<< addArgs args defaultOptions
+    when (optHelp config) $
+        stop (DisplayHelp $ usageInfo progname options)
+    return config
+
+
+data Stop = DisplayHelp String
+instance Show Stop where
+    show (DisplayHelp s) = s
+
+data Failure = OptErrors [String]
+             | CantParseLoc String
+instance Show Failure where
+    show (OptErrors es) = "failed to parse options:\n" ++ intercalate "\t" es
+    show (CantParseLoc input) = printf "can't parse location '%s'\n" input ++
+        "\tLOCs must be given in the form of numbers separated '.' or '_'\n" ++
+        "\texamples: 3_1_5 or 2.1.1.4"
+
+
+data Warning = ExtraArg String | Unrecognized String
+instance Show Warning where
+    show (ExtraArg s) = "ignoring extra argument: " ++ s
+    show (Unrecognized s) = "ignoring unrecognized flag: " ++ s
