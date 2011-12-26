@@ -19,7 +19,7 @@ import Control.Monad.Trans
 import Control.Monad.Loops
 import Control.Dangerous hiding ( Warning )
 import Data.Char
-import qualified Data.Configger as Config
+import qualified Data.Configger as Configger
 import Data.Configger ( Config )
 import Data.Maybe
 import System.Directory
@@ -58,7 +58,7 @@ raw :: FilePath -> DangerousT IO Config
 raw dir = do
     let cfile = dir </> configFile
     hasConfig <- liftIO $ doesFileExist cfile
-    if hasConfig then Config.load variableSection cfile else return []
+    if hasConfig then Configger.load variableSection cfile else return []
 
 load :: FilePath -> DangerousT IO Config
 load path = do
@@ -81,25 +81,25 @@ merge conf dir fmt = let name = takeFileName dir in do
         (warn $ IgnoringStyle name)
     when (isJust (option resourceOption new) && fmt /= "odt")
         (warn $ IgnoringResources name)
-    return $ Config.merge new conf
+    return $ Configger.merge new conf
 
 vars :: Config -> [(String, String)]
-vars = Config.items variableSection
+vars = Configger.items variableSection
 
 option :: String -> Config -> Maybe String
-option = Config.get optionSection
+option = Configger.get optionSection
 
 setOption :: String -> String -> Config -> Config
-setOption = Config.set optionSection
+setOption = Configger.set optionSection
 
 set :: String -> String -> Config -> Config
-set = Config.set variableSection
+set = Configger.set variableSection
 
 debug :: Config -> Bool
 debug conf = maybe False parseBool (option debugOption conf)
 
 setDebug :: Config -> Config
-setDebug = Config.set optionSection debugOption (show True)
+setDebug = Configger.set optionSection debugOption (show True)
 
 style :: Config -> Maybe String
 style = option styleOption
