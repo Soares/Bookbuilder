@@ -1,25 +1,11 @@
-module Text.Bookbuilder.FilePath where
+module System.FilePath.Utils where
 
-import Control.Applicative ( (<*>) )
-import Control.Monad.Loops ( allM )
-import Data.Functor ( (<$>) )
+import Control.Applicative
+import Control.Monad.Loops
 import Data.List ( sort )
-import Data.List.Utils ( startswith )
 import System.Directory
-	( canonicalizePath
-	, doesDirectoryExist
-	, doesFileExist
-	, getCurrentDirectory
-	, getDirectoryContents )
 import System.FilePath.Posix
-	( (</>)
-	, (<.>)
-	, isRelative
-	, makeRelative
-	, hasExtension
-	, takeDirectory
-	, takeFileName )
-import System.Posix.Files ( fileSize, getFileStatus )
+import System.Posix.Files
 
 from :: FilePath -> FilePath -> FilePath
 from a b | makeRelative b a == "." = ""
@@ -30,7 +16,7 @@ ls path = (map (path </>) . sort . filter isVisible) <$>
 	getDirectoryContents path
 
 isVisible :: FilePath -> Bool
-isVisible = not . startswith "." . takeFileName
+isVisible = not . (== '.') . head . takeFileName
 
 exists :: FilePath -> IO Bool
 exists p = (||) <$> doesDirectoryExist p <*> doesFileExist p

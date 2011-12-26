@@ -1,85 +1,45 @@
-Name:        Bookbuilder
+Name:          bookbuilder
 Version:       0.4.0
 License:       MIT
-License-file:    LICENSE
+License-file:  LICENSE
 Category:      Writing
 Synopsis:      Build a book directory into a single file
-Description:     Turn structured directory of text files into a single file.
-           Input formats include anything that pandoc can read.
-           Templating allows for separation of content and design.
-           Themes can be used to generate different output styles.
-           Subsets of the entire book can be built.
-           The tool can discover the current location in a book and
-           build only that location.
+Description:   Turn structured directory of text files into a single file.
+               Input formats include anything that pandoc can read.
+               Templating allows for separation of content and design.
+               Themes can be used to generate different output styles.
+               Subsets of the entire book can be built.
+               The tool can discover the current location in a book and
+               build only that location.
 Synopsis:      Compile a book in a directory into a single file
-Description:     Tool for building books
+Description:   Tool for building books
 Author:        Nate Soares
-Maintainer:      nate@natesoares.com
-Build-Type:      Simple
-Cabal-Version:     >=1.6
+Maintainer:    nate@natesoares.com
+Build-Type:    Simple
+Cabal-Version: >=1.6
 
 source-repository head
   type: git
-  location: git://github.com/Soares/Bookbuilder.git
-
-
-Library
-  -- Note: the following material must be in both Library and Executable stanzas.
-  -- It needs to be duplicated because of the library & executable flags.
-  -- BEGIN DUPLICATED SECTION
-  -- TODO: remove unix dependency
-  -- TODO: add bounds dependency
-  Build-Depends: base >= 4 && < 5,
-           bytestring >= 0.9,
-           process >= 1.0,
-           utf8-string >= 0.3,
-           pandoc >= 1.8,
-           filepath >= 1.2,
-           monad-loops >= 0.3,
-           split >= 0.1,
-           MissingH >= 1.1,
-           parsec >= 3.1,
-           directory >= 1.1,
-           containers >= 0.4,
-           mtl >= 2.0,
-           rosezipper >= 0.2
-  if os(windows)
-    Cpp-options: -DWINDOWS
-  else
-    Build-depends: unix >= 2.4
-  Hs-Source-Dirs:   src
-  Ghc-Options:      -Wall
-  Ghc-Prof-Options: -auto-all
-  -- END DUPLICATED SECTION
-  Exposed-modules: Text.Bookbuilder,
-                   Text.Bookbuilder.Config
-                   Text.Bookbuilder.FilePath
-                   Text.Bookbuilder.Template
-                   Text.Bookbuilder.Template.Constraint
-                   Text.Bookbuilder.Location
-  -- TODO: remove this
-  Other-modules: Data.Limit
+  location: git://github.com/Soares/bookbuilder.git
 
 Executable bookbuilder
-  -- Note: the following material must be in both Library and Executable stanzas.
-  -- It needs to be duplicated because of the library & executable flags.
-  -- BEGIN DUPLICATED SECTION
-  -- TODO: remove unix dependency
-  -- TODO: add bounds dependency
-  Build-Depends: base >= 4 && < 5,
-           bytestring >= 0.9,
-           process >= 1.0,
-           utf8-string >= 0.3,
-           pandoc >= 1.8,
-           filepath >= 1.2,
-           monad-loops >= 0.3,
-           split >= 0.1,
-           MissingH >= 1.1,
-           parsec >= 3.1,
-           directory >= 1.1,
-           containers >= 0.4,
-           mtl >= 2.0,
-           rosezipper >= 0.2
+  Build-Depends:
+    base >= 4 && < 5,
+    Dangerous >= 0.2.2,
+    Limit >= 1.0,
+    bytestring >= 0.9,
+    process >= 1.0,
+    utf8-string >= 0.3,
+    pandoc >= 1.8,
+    filepath >= 1.2,
+    monad-loops >= 0.3,
+    split >= 0.1,
+    -- MissingH >= 1.1,
+    parsec >= 3.1,
+    directory >= 1.1,
+    containers >= 0.4,
+    mtl >= 2.0,
+    rosezipper >= 0.2
   if os(windows)
     Cpp-options: -DWINDOWS
   else
@@ -87,5 +47,4 @@ Executable bookbuilder
   Hs-Source-Dirs:   src
   Ghc-Options:      -Wall
   Ghc-Prof-Options: -auto-all
-  -- END DUPLICATED SECTION
   Main-Is:          bookbuilder.hs

@@ -1,9 +1,7 @@
-module Options
-    ( Options(..)
-    , configure
-    ) where
+module Options ( Options(..), configure ) where
 
-import Control.Dangerous ( Dangerous, warn, throw, stop )
+import Prelude hiding ( log )
+import Control.Dangerous hiding ( Exit, Warning )
 import Control.Monad
 import Control.Monad.Loops
 import Data.Focus
@@ -86,7 +84,7 @@ options =
         (NoArg (\opt -> return opt{ optDebug = True }))
         "write the intermediary files, i.e. default.pdf.tex"
 
-    , Option "h?" ["help"]
+    , Option "h" ["help"]
         (NoArg (\opt -> return opt { optHelp = True}))
         "display this help"
     ]
@@ -111,24 +109,22 @@ configure progname argv = do
         mapM_ (warn . Unrecognized) unrecognized
     unless (null errors) $
         throw (OptErrors errors)
-    config <- concatM actions =<< addArgs args defaultOptions
+    config <- addArgs args =<< concatM actions defaultOptions
     when (optHelp config) $
-        stop (DisplayHelp $ usageInfo progname options)
+        stop (DisplayHelp progname $ usageInfo progname options)
     return config
 
 
-data Stop = DisplayHelp String
+data Stop = DisplayHelp String String
 instance Show Stop where
-    show (DisplayHelp s) = s
+    show (DisplayHelp n s) = printf "%s: %s" n s
 
-data Failure = OptErrors [String]
-             | CantParseLoc String
+data Failure = OptErrors [String] | CantParseLoc String
 instance Show Failure where
     show (OptErrors es) = "failed to parse options:\n" ++ intercalate "\t" es
     show (CantParseLoc input) = printf "can't parse location '%s'\n" input ++
         "\tLOCs must be given in the form of numbers separated '.' or '_'\n" ++
         "\texamples: 3_1_5 or 2.1.1.4"
-
 
 data Warning = ExtraArg String | Unrecognized String
 instance Show Warning where

@@ -1,4 +1,4 @@
-module Text.Bookbuilder.Template.Constraint
+module Target.Constraint
 	( Constraint
     , Constraints
 	, load
@@ -128,7 +128,7 @@ numchar = oneOf ['0'..'9']
 
 -- | Special strings
 anymarker :: GenParser Char st String
-anymarker = mapM char "any"
+anymarker = string "any"
 
 -- | Names for simple characters
 hyphen, pipe, underscore, quote :: GenParser Char st ()

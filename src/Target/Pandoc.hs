@@ -1,7 +1,8 @@
-module Text.Bookbuilder.Pandoc where
+module Target.Pandoc where
 
 import Codec.Binary.UTF8.String ( encodeString )
 import Data.Char ( toLower )
+import Data.Configger ( Config )
 import Data.Maybe ( fromMaybe )
 import System.FilePath.Posix ( takeExtension )
 import Text.Pandoc ( Pandoc
@@ -16,7 +17,8 @@ import Text.Pandoc ( Pandoc
                    , writeODT
                    , writeLaTeX )
 import qualified Data.ByteString.Lazy as B
-import qualified Text.Bookbuilder.PDF as PDF
+import qualified Target.PDF as PDF
+import qualified Target.Config as Config
 
 defaultReader :: ParserState -> String -> Pandoc
 defaultReader = readMarkdown
@@ -32,16 +34,15 @@ render :: String -> Pandoc -> String
 render format = w defaultWriterOptions where
 	w = fromMaybe defaultWriter (lookup format writers)
 
-write :: String -> Maybe String -> FilePath -> Pandoc -> IO ()
-write format extra dest doc = case lookup format writers of
-	-- TODO: Make this take a configuration file instead of (Maybe String)
+write :: String -> Config -> FilePath -> Pandoc -> IO ()
+write format conf dest doc = case lookup format writers of
 	Nothing | format == "pdf" ->
-		PDF.outputLaTeX dest $ writeLaTeX ops doc
+		PDF.outputLaTeX conf dest $ writeLaTeX ops doc
 	Nothing | format == "epub" ->
-		writeEPUB extra ops doc
+		writeEPUB (Config.style conf) ops doc
 		>>= B.writeFile (encodeString dest)
 	Nothing | format == "odt" ->
-		writeODT extra ops doc
+		writeODT (Config.resources conf) ops doc
 		>>= B.writeFile (encodeString dest)
 	Nothing | format == "-" -> putStr $ guess ops doc
 	Nothing -> writeFile dest $ guess ops doc

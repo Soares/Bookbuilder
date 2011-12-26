@@ -1,82 +1,124 @@
-module Text.Bookbuilder.Book ( Book, base, discover, populate, flatten ) where
+module Book ( Book, load, compile ) where
+import Control.Applicative
+import Control.Arrow
+import Control.Dangerous hiding ( Exit, Warning, execute )
+import Control.Monad
+import Control.Monad.Trans
+import Data.List
+import Data.Focus
+import Data.Maybe
+import Data.Scope
+import System.FilePath
+import System.FilePath.Utils
+import Text.Printf
+import Target hiding ( load )
+import qualified Path
+import qualified Target
+import qualified Target.Config as Config
+import qualified Section
+import Options
 
-import Control.Monad.Reader ( asks )
-import Control.Monad.Loops ( concatM )
-import Control.Monad.Trans ( liftIO )
-import Data.Functor ( (<$>) )
-import Data.Maybe ( fromMaybe )
-import Data.Tree ( Tree(Node) )
-import Data.Tree.Zipper
-	( TreePos
-	, Empty
-	, nextSpace
-	, nextTree
-	, insert
-	, label
-	, setLabel
-	, tree
-	, fromTree
-	, parent
-	, children )
-import Text.Bookbuilder.Config ( Configged, Config )
-import Text.Bookbuilder.Profile ( Profile )
-import qualified Text.Bookbuilder.Section as Section
-import Text.Bookbuilder.Section
-	( Gender(..)
-	, Structure
-	, Section
-	, gender
-	, sections
-	, above
-	, valid
-	, subsections
-	, contextualize
-	, reduce
-	, fill
-	, filepath )
-import Text.Bookbuilder.Variables ( variables )
+data Book = Book
+    { _title    :: String
+    , _scope    :: Scope
+    , _root     :: Section.Section
+    , _build    :: FilePath
+    , _targets  :: [Target] }
 
-type Book = Structure
 
-base :: Config -> IO Structure
-base conf = (\s -> fromTree (Node s [])) <$> Section.base conf
+-- | Loading
 
-discover :: Structure -> Configged IO Structure
-discover z = do
-	subsecs <- liftIO =<< asks (subsections $ sections z)
-	filled <- concatM (map pipe subsecs) (children z)
-	return $ fromMaybe z $ parent filled
-	where pipe s hole = maybe hole nextSpace <$> discover' s hole
+load :: Options -> DangerousT IO Book
+load opts = do
+    -- Canonicalize the root, in case we have a weird relative path
+    start <- liftIO $ canonicalizeHere $ optRoot opts
 
-discover' :: Section -> TreePos Empty Section -> Configged IO (Maybe Structure)
-discover' s z = let z' = insert (Node s []) z in do
-	proceed <- asks $ valid $ sections z'
-	if proceed then Just <$> discover z' else return Nothing
+    -- Detect the top if they are currently within the book
+    let dirs = map ($ opts) [optSourceDir, optTargetDir, optBuildDir]
+    top <- if optDetect opts
+        then liftIO (start `ancestorWith` dirs) >>=
+            maybe (throw $ CantDetect start dirs) return
+        else return start
 
-populate :: Structure -> Configged IO Book
-populate z = let (Node s _) = tree z in do
-	vars <- asks $ variables z
-	s' <- case gender s of
-		File -> do
-			file <- asks . filepath $ sections z
-			body <- liftIO $ readFile file
-			return $ s `fill` body
-		_ -> return s
-	let z' = setLabel (contextualize s' vars) z
-	fromMaybe z' <$> populate' (children z')
+    -- Ensure that the other directories exist
+    let ensure dir err = let path = top </> dir opts in do
+        there <- liftIO $ exists path
+        unless there $ throw (err path)
+        return path
+    srcDir <- ensure optSourceDir NoSource
+    buildDir <- ensure optBuildDir NoBuild
+    targetDir <- ensure optTargetDir NoTarget
 
-populate' :: TreePos Empty Section -> Configged IO (Maybe Structure)
-populate' z = case nextTree z of
-	Nothing -> return $ parent z
-	Just c -> populate c >>= populate' . nextSpace
+    -- Load the data
+    let title = Path.title $ takeFileName top
+    let scope = getScope start srcDir opts
+    root <- liftIO $ Section.load srcDir "" scope
 
-flatten :: Profile -> Book -> String
-flatten prof z = reduce prof (s' : above z) where
-	s' = if gender s == File then s else s `fill` body
-	body = flatten' prof $ children z
-	s = label z
+    -- Load the targets
+    conf <- Config.setDebug (optDebug opts) <$> Config.load targetDir
+    paths <- filter (not . Config.isSpecial) <$> liftIO (ls targetDir)
+    targets <- mapM (Target.load conf) paths
 
-flatten' :: Profile -> TreePos Empty Section -> String
-flatten' prof z = case nextTree z of
-	Just c -> flatten prof c ++ flatten' prof (nextSpace c)
-	Nothing -> ""
+    -- Build the book
+    return Book{ _title = title
+               , _scope = scope
+               , _root = root
+               , _build = buildDir
+               , _targets = targets }
+
+
+getScope :: FilePath -> FilePath -> Options -> Scope
+getScope start src opts | optDetect opts = use $ let
+    path = start `from` src
+    path' = if path == start then "" else path
+    parts = splitPath path'
+    locations = mapMaybe fromString parts
+    location = foldr focus unfocused locations
+    in if null path' then unfocused else location
+                        | otherwise = use unfocused
+    where use = fromTuple . (let get = (flip fromMaybe . ($ opts))
+                             in get optStart &&& get optEnd)
+
+
+-- | Writing
+
+compile :: Book -> IO ()
+compile book = mapM_ (execute book) (_targets book) where
+
+execute :: Book -> Target -> IO ()
+execute book target = do
+    let d = dest book target
+    let t = text book target
+    putStrLn $ statusMsg d target
+    when (debug target) $ writeTemp d t target
+    write d t target
+
+text :: Book -> Target -> String
+text book target = Section.flatten (_title book) (_root book)
+    (render target) (expand target)
+
+dest :: Book -> Target -> FilePath
+dest book target = let
+    title = _title book
+    scope = _scope book
+    suffix = [show scope | not $ isEverywhere scope]
+    name = fromMaybe title (theme target)
+    in intercalate "-" (name : suffix)
+
+statusMsg :: FilePath -> Target -> String
+statusMsg path target = printf "%s [%s]" path (show target)
+
+
+-- | Errors
+
+data Error = NoSource FilePath
+           | NoTarget FilePath
+           | NoBuild FilePath
+           | CantDetect FilePath [FilePath]
+instance Show Error where
+    show (NoSource path) = printf "source directory '%s' not found\n" path
+    show (NoTarget path) = printf "target directory '%s' not found\n" path
+    show (NoBuild path) = printf "build directory '%s' not found\n" path
+    show (CantDetect path dirs) = "can't detect book root.\n" ++
+        printf "\tSearched from: %s\n" path ++
+        printf "\tLooked for directories: %s\n" (intercalate ", " dirs)

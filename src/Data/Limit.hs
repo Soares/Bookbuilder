@@ -1,1 +1,0 @@
-/home/nate/code/haskell/limit/src/Data/Limit.hs

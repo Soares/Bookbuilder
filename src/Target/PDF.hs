@@ -1,11 +1,12 @@
-module Text.Bookbuilder.PDF ( outputLaTeX ) where
+module Target.PDF ( outputLaTeX ) where
 -- Copied from Pandoc's markdown2pdf
 -- TODO: the style here doesn't match Bookbuilder style
 -- TODO: Add real error handling
 
 import Prelude hiding ( catch )
 import Data.List (isInfixOf, intercalate)
-import Data.Maybe (isNothing)
+import Data.Configger ( Config )
+import Data.Maybe ( isNothing, fromMaybe )
 import Codec.Binary.UTF8.String (encodeString)
 import qualified Data.ByteString as BS
 import Data.ByteString.UTF8 (toString)
@@ -20,6 +21,7 @@ import System.Exit (ExitCode (..))
 import System.FilePath
 import System.Directory
 import System.Process
+import Target.Config ( latex )
 
 -- A variant of 'readProcessWithExitCode' that does not
 -- cause an error if the output is not UTF-8. (Copied
@@ -162,10 +164,9 @@ createTempDir num baseName = do
                then createTempDir (num + 1) baseName
                else ioError e
 
-outputLaTeX :: FilePath -> String -> IO ()
-outputLaTeX path tex = withTempDir "bookbuilder" $ \tmp -> do
-    -- TODO: Take a configuration file, use it to find latexProgram
-    let latexProgram = "pdflatex"
+outputLaTeX :: Config -> FilePath -> String -> IO ()
+outputLaTeX conf path tex = withTempDir "bookbuilder" $ \tmp -> do
+    let latexProgram = fromMaybe "pdflatex" (latex conf)
     let execs = [latexProgram, "bibtex"]
     paths <- mapM findExecutable execs
     let miss = map snd $ filter (isNothing . fst) $ zip paths execs

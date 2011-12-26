@@ -1,6 +1,6 @@
-module Text.Bookbuilder.Template
+module Target.Template
 	( Template
-	, TemplateError
+	, Error
 	, render
 	, name
 	, load
@@ -12,17 +12,17 @@ module Text.Bookbuilder.Template
 	, fallback
 	) where
 
+import Data.Focus ( Focus, toList )
 import Data.Functor ( (<$>) )
 import Data.Function ( on )
 import Data.Limit ( Limit(Bounded,Unbounded) )
 import Data.Maybe ( fromMaybe )
-import qualified Text.Bookbuilder.Template.Constraint as Constraint
-import Text.Bookbuilder.Template.Constraint ( Constraint )
-import Text.Bookbuilder.Location ( Location, toList )
+import Target.Constraint ( Constraint )
+import qualified Target.Constraint as Constraint
 import Text.Pandoc.Templates ( renderTemplate )
 import Text.ParserCombinators.Parsec ( ParseError )
 import Text.Printf ( printf )
-import System.FilePath.Posix ( takeFileName, splitFileName )
+import System.FilePath ( takeFileName, splitFileName )
 
 
 
@@ -53,7 +53,7 @@ render vars = renderTemplate vars . _source
 
 -- | Creation
 
-load :: FilePath -> IO (Either TemplateError Template)
+load :: FilePath -> IO (Either Error Template)
 load path = load' $ Constraint.load file where
 	file = takeFileName path
 	load' (Left err) = return . Left $ NoParse path err
@@ -66,14 +66,14 @@ load path = load' $ Constraint.load file where
 
 -- | Constraint checking
 
-matches :: Template -> Location -> Bool
+matches :: Template -> Focus -> Bool
 matches tmpl = Constraint.matches (_constraints tmpl) . toList
 
-matching :: [Template] -> Location -> Maybe Template
+matching :: [Template] -> Focus -> Maybe Template
 matching ts loc = first $ filter (`matches` loc) ts
 	where first xs = if null xs then Nothing else Just $ head xs
 
-get :: [Template] -> Location -> Template
+get :: [Template] -> Focus -> Template
 get ts = fromMaybe fallback . matching ts
 
 
@@ -95,8 +95,8 @@ fallback = Template { _name = "fallback"
 
 -- | Error handling
 
-data TemplateError = NoParse FilePath ParseError
-instance Show TemplateError where
+data Error = NoParse FilePath ParseError
+instance Show Error where
 	show (NoParse f e) = let (template, profile) = splitFileName f in
 		printf "WARNING: Could not parse template %s\n" template ++
 		printf "\tError was: %s\n" (show e) ++
