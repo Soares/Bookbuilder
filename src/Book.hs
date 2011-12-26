@@ -57,6 +57,7 @@ load opts = do
     -- Load the targets
     conf <- Config.load targetDir
     let conf' = if optDebug opts then Config.setDebug conf else conf
+    -- Filter the targets included by '-t' options
     let inTargets path = case optTargets opts of
                             [] -> True
                             xs -> takeFileName path `elem` xs
@@ -81,8 +82,8 @@ getScope start src opts | optDetect opts = use $ let
     location = foldr focus unfocused locations
     in if null path' then unfocused else location
                         | otherwise = use unfocused
-    where use = fromTuple . (let get = (flip fromMaybe . ($ opts))
-                             in get optStart &&& get optEnd)
+    where use = fromTuple . (get optStart &&& get optEnd)
+          get = flip fromMaybe . ($ opts)
 
 
 -- | Writing
@@ -108,7 +109,7 @@ dest book target = let
     scope = _scope book
     suffix = strRange scope
     name = fromMaybe title (theme target)
-    in (_build book) </> name ++ suffix <.> ext target
+    in _build book </> name ++ suffix <.> ext target
 
 strRange :: Scope -> String
 strRange scope | isEverywhere scope = ""

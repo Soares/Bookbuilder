@@ -39,6 +39,7 @@ instance Show Target where
         (name, to) = splitExtension $ _name t
         from = takeExtension $ _innerExt t
 
+
 -- | Constants
 
 defaultTheme :: String
@@ -94,6 +95,7 @@ pickFormat path tmpls = do
     when (null $ takeExtension result) (warn $ NoExtension path tmpls)
     return $ takeExtension result
 
+
 -- | Target manipulation
 
 debug :: Target -> Bool
@@ -110,9 +112,9 @@ ext = takeExtension . _name
 -- | Section affectors
 
 expand :: Target -> Focus -> [(String, String)] -> String
-expand t foc extra = Template.render vars tmpl where
+expand t foc vs = Template.render vars tmpl where
     tmpl = Template.get (_templates t) foc
-    vars = extra ++ Config.vars (_config t)
+    vars = vs ++ Config.vars (_config t)
 
 render :: Target -> Pandoc -> String
 render t doc = Pandoc.render to doc where
