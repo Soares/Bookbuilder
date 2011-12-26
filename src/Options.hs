@@ -99,7 +99,7 @@ parseLOC arg = case parse arg of
 addArgs :: [String] -> Options -> Dangerous Options
 addArgs [] opts = return opts
 addArgs [x] opts = return opts{ optRoot = x }
-addArgs (x:xs) opts = (mapM_ (warn . ExtraArg) xs) >> addArgs [x] opts 
+addArgs (x:xs) opts = mapM_ (warn . ExtraArg) xs >> addArgs [x] opts 
 
 
 configure :: String -> [String] -> Dangerous Options

@@ -55,7 +55,8 @@ load opts = do
     root <- liftIO $ Section.load srcDir "" scope
 
     -- Load the targets
-    conf <- Config.setDebug (optDebug opts) <$> Config.load targetDir
+    conf <- Config.load targetDir
+    let conf' = if optDebug opts then Config.setDebug conf else conf
     paths <- filter (not . Config.isSpecial) <$> liftIO (ls targetDir)
     targets <- mapM (Target.load conf) paths
 

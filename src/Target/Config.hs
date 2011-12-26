@@ -12,11 +12,13 @@ module Target.Config
     , style
     , resources
     , latex
+    , parseBool
     ) where
 import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Loops
 import Control.Dangerous hiding ( Warning )
+import Data.Char
 import qualified Data.Configger as Config
 import Data.Configger ( Config )
 import Data.Maybe
@@ -52,15 +54,19 @@ isSpecial = flip elem [configFile, styleFile, resourceFile] . takeFileName
 isConfig :: FilePath -> Bool
 isConfig = (== configFile) . takeFileName
 
+raw :: FilePath -> DangerousT IO Config
+raw dir = do
+    let cfile = dir </> configFile
+    hasConfig <- liftIO $ doesFileExist cfile
+    if hasConfig then Config.load variableSection cfile else return []
+
 load :: FilePath -> DangerousT IO Config
 load path = do
-    let cfile = path </> configFile
     let sfile = path </> styleFile
     let rfile = path </> resourceFile
-    hasConfig <- liftIO $ doesFileExist cfile
     hasStyle <- liftIO $ doesFileExist sfile
     hasResources <- liftIO $ doesFileExist rfile
-    conf <- if hasConfig then Config.load variableSection cfile else return []
+    conf <- raw path
     let setStyle c = do
         css <- liftIO $ readFile sfile
         return $ setOption styleOption css c
@@ -70,7 +76,7 @@ load path = do
 
 merge :: Config -> FilePath -> String -> DangerousT IO Config
 merge conf dir fmt = let name = takeFileName dir in do
-    new <- Config.load variableSection dir
+    new <- raw dir
     when (isJust (option styleOption new) && fmt /= "epub")
         (warn $ IgnoringStyle name)
     when (isJust (option resourceOption new) && fmt /= "odt")
@@ -90,10 +96,10 @@ set :: String -> String -> Config -> Config
 set = Config.set variableSection
 
 debug :: Config -> Bool
-debug conf = maybe False read (option debugOption conf)
+debug conf = maybe False parseBool (option debugOption conf)
 
-setDebug :: Bool -> Config -> Config
-setDebug = Config.set optionSection debugOption . show
+setDebug :: Config -> Config
+setDebug = Config.set optionSection debugOption (show True)
 
 style :: Config -> Maybe String
 style = option styleOption
@@ -103,6 +109,9 @@ resources = option resourceOption
 
 latex :: Config -> Maybe String
 latex = option latexOption
+
+parseBool :: String -> Bool
+parseBool = (`elem` ["true", "yes", "on", "1"]) . map toLower
 
 data Warning = IgnoringStyle String
 			 | IgnoringResources String

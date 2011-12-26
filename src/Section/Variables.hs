@@ -9,29 +9,29 @@ import Section.Info
 
 variables :: Section -> [(String, String)]
 variables z conf = let
-	-- Helper functions
-	maybeLast [] = Nothing
-	maybeLast (x:[]) = Just x
-	maybeLast (_:xs) = maybeLast xs
-	sameGender (Node i _) = gender i == gender isolate
-	-- Data structure
-	(Node isolate children) = tree z
-    as = above z
-	loc = toList $ location z
-	lefts = before z
-	rights = after z
-	smartLefts = takeWhile sameGender lefts
-	smartRights = takeWhile sameGender rights
-	ancestors = tail as
-	-- Simple variables
-	n = fromMaybe 1 $ maybeLast loc
-	counter = n - 1
-	count = length lefts + length rights + 1
-	smartCounter = length smartLefts
-	smartN = smartCounter + 1
-	smartCount = length smartLefts + length smartRights + 1
-	childTitles = map (\(Node i _) -> title i conf) children
-	parentTitles = map (`title` conf) ancestors
+    -- Helper functions
+    maybeLast [] = Nothing
+    maybeLast (x:[]) = Just x
+    maybeLast (_:xs) = maybeLast xs
+    sameGender (Node i _) = gender i == gender isolate
+    -- Data structure
+    (Node isolate children) = tree z
+    trail = above z
+    loc = toList $ location z
+    lefts = before z
+    rights = after z
+    smartLefts = takeWhile sameGender lefts
+    smartRights = takeWhile sameGender rights
+    ancestors = tail trail
+    -- Simple variables
+    n = fromMaybe 1 $ maybeLast loc
+    counter = n - 1
+    count = length lefts + length rights + 1
+    smartCounter = length smartLefts
+    smartN = smartCounter + 1
+    smartCount = length smartLefts + length smartRights + 1
+    childTitles = map (\(Node i _) -> title i conf) children
+    parentTitles = map (`title` conf) ancestors
     in [ ("title", title section conf)
        , ("n", show n)
        , ("counter", show counter)
