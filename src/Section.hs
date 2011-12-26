@@ -9,7 +9,8 @@ import Data.Tree.Zipper
 import System.Directory
 import System.FilePath
 import System.FilePath.Utils
-import Section.Isolate ( Isolate, Gender(..) )
+import Section.Isolate ( Isolate )
+import Section.Variables ( variables )
 import qualified Section.Isolate as Isolate
 import qualified Section.Info as Info
 import qualified Path
@@ -42,10 +43,10 @@ type Expander = (Focus -> [(String, String)] -> String)
 flatten :: String -> Section -> Renderer -> Expander -> String
 flatten t z render expand = expand loc vars where
     i = label z
-    body = case Isolate.gender i of
-        File text -> render $ Pandoc.parse (Isolate.name i) text
-        Directory -> flatten' render expand (children z) ""
-    vars = [("title", t), ("body", body)]
+    body = case Isolate.body i of
+        Just text -> render $ Pandoc.parse (Isolate.name i) text
+        Nothing -> flatten' render expand (children z) ""
+    vars = [("title", t), ("body", body)] ++ variables z
     loc = Info.location z
 flatten' :: Renderer -> Expander -> TreePos Empty Isolate -> ShowS
 flatten' render expand z = case nextTree z of

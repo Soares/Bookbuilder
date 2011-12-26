@@ -26,6 +26,8 @@ Executable bookbuilder
   Build-Depends:
     base >= 4 && < 5,
     Dangerous >= 0.2.2,
+    Focus >= 0.1.2,
+    Configger >= 0.1,
     Limit >= 1.0,
     bytestring >= 0.9,
     process >= 1.0,
@@ -40,11 +42,7 @@ Executable bookbuilder
     containers >= 0.4,
     mtl >= 2.0,
     rosezipper >= 0.2
-  if os(windows)
-    Cpp-options: -DWINDOWS
-  else
-    Build-depends: unix >= 2.4
   Hs-Source-Dirs:   src
   Ghc-Options:      -Wall
   Ghc-Prof-Options: -auto-all
-  Main-Is:          bookbuilder.hs
+  Main-Is:          Main.hs

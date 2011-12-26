@@ -58,7 +58,7 @@ load opts = do
     conf <- Config.load targetDir
     let conf' = if optDebug opts then Config.setDebug conf else conf
     paths <- filter (not . Config.isSpecial) <$> liftIO (ls targetDir)
-    targets <- mapM (Target.load conf) paths
+    targets <- mapM (Target.load conf') paths
 
     -- Build the book
     return Book{ _title = title

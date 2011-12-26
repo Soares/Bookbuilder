@@ -1,28 +1,26 @@
-module Text.Bookbuilder.Variables ( variables ) where
+module Section.Variables ( variables ) where
 import Data.Maybe ( fromMaybe )
-import Data.Focus
-import Data.Tree ( Tree(Node) )
-import Data.Tree.Zipper ( tree, before, after )
-import qualified Path
-import qualified Section.Isolate as Isolate
+import Data.Focus hiding ( focus )
+import Data.Tree
+import Data.Tree.Zipper
+import Path ( title )
+import Section.Isolate ( Isolate, name, isSameGender, focus )
 import Section.Info
 
-variables :: Section -> [(String, String)]
-variables z conf = let
+variables :: TreePos Full Isolate -> [(String, String)]
+variables z = let
     -- Helper functions
     maybeLast [] = Nothing
     maybeLast (x:[]) = Just x
     maybeLast (_:xs) = maybeLast xs
-    sameGender (Node i _) = gender i == gender isolate
     -- Data structure
     (Node isolate children) = tree z
-    trail = above z
     loc = toList $ location z
     lefts = before z
     rights = after z
-    smartLefts = takeWhile sameGender lefts
-    smartRights = takeWhile sameGender rights
-    ancestors = tail trail
+    smartLefts = takeWhile (isSameGender isolate . rootLabel) lefts
+    smartRights = takeWhile (isSameGender isolate . rootLabel) rights
+    ancestors = tail $ above z
     -- Simple variables
     n = fromMaybe 1 $ maybeLast loc
     counter = n - 1
@@ -30,9 +28,9 @@ variables z conf = let
     smartCounter = length smartLefts
     smartN = smartCounter + 1
     smartCount = length smartLefts + length smartRights + 1
-    childTitles = map (\(Node i _) -> title i conf) children
-    parentTitles = map (`title` conf) ancestors
-    in [ ("title", title section conf)
+    childTitles = map (\(Node i _) -> (title . name) i) children
+    parentTitles = map (title . name) ancestors
+    in [ ("title", title $ name isolate)
        , ("n", show n)
        , ("counter", show counter)
        , ("count", show count)
@@ -40,7 +38,7 @@ variables z conf = let
        , ("smartCounter", show smartCounter)
        , ("smartCount", show smartCount)
        , ("nChildren", show $ length children) ] ++
-       [ ("ns", show i) | i <- toList $ index section ] ++
+       [ ("ns", show i) | i <- toList $ focus isolate ] ++
        [ ("child", c) | c <- childTitles ] ++
        [ ("parent" ++ show (i :: Int), p) |
          (i, p) <- zip [0..] parentTitles]
