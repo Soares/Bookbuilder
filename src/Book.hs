@@ -57,7 +57,11 @@ load opts = do
     -- Load the targets
     conf <- Config.load targetDir
     let conf' = if optDebug opts then Config.setDebug conf else conf
-    paths <- filter (not . Config.isSpecial) <$> liftIO (ls targetDir)
+    let inTargets path = case optTargets opts of
+                            [] -> True
+                            xs -> takeFileName path `elem` xs
+    let included path = not (Config.isSpecial path) && inTargets path
+    paths <- filter included <$> liftIO (ls targetDir)
     targets <- mapM (Target.load conf') paths
 
     -- Build the book
@@ -102,9 +106,15 @@ dest :: Book -> Target -> FilePath
 dest book target = let
     title = _title book
     scope = _scope book
-    suffix = [show scope | not $ isEverywhere scope]
+    suffix = strRange scope
     name = fromMaybe title (theme target)
-    in intercalate "-" (name : suffix)
+    in (_build book) </> name ++ suffix <.> ext target
+
+strRange :: Scope -> String
+strRange scope | isEverywhere scope = ""
+strRange scope = intercalate "-" [lo, hi] where
+    (lo, hi) = both (intercalate "_" . map show . toList) (toTuple scope)
+    both f = f *** f
 
 statusMsg :: FilePath -> Target -> String
 statusMsg path target = printf "%s [%s]" path (show target)

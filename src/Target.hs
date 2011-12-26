@@ -100,7 +100,7 @@ debug :: Target -> Bool
 debug = Config.debug . _config
 
 theme :: Target -> Maybe String
-theme t = let name = takeFileName (_name t) in
+theme t = let name = dropExtension (_name t) in
     if name == defaultTheme then Nothing else Just name
 
 ext :: Target -> String
@@ -132,7 +132,7 @@ write dest text target = output text where
     parse = Pandoc.parse from
 
 writeTemp :: FilePath -> String -> Target -> IO ()
-writeTemp path text target = writeFile (path <.> ext target) text
+writeTemp path text target = writeFile (path <.> _innerExt target) text
 
 
 data Warning = BadTemplate Template.Error

@@ -14,7 +14,7 @@ variables z = let
     maybeLast (x:[]) = Just x
     maybeLast (_:xs) = maybeLast xs
     -- Data structure
-    (Node isolate children) = tree z
+    (Node isolate childs) = tree z
     loc = toList $ location z
     lefts = before z
     rights = after z
@@ -28,7 +28,7 @@ variables z = let
     smartCounter = length smartLefts
     smartN = smartCounter + 1
     smartCount = length smartLefts + length smartRights + 1
-    childTitles = map (\(Node i _) -> (title . name) i) children
+    childTitles = map (\(Node i _) -> (title . name) i) childs
     parentTitles = map (title . name) ancestors
     in [ ("title", title $ name isolate)
        , ("n", show n)
@@ -37,7 +37,7 @@ variables z = let
        , ("smartN", show smartN)
        , ("smartCounter", show smartCounter)
        , ("smartCount", show smartCount)
-       , ("nChildren", show $ length children) ] ++
+       , ("nChildren", show $ length childs) ] ++
        [ ("ns", show i) | i <- toList $ focus isolate ] ++
        [ ("child", c) | c <- childTitles ] ++
        [ ("parent" ++ show (i :: Int), p) |

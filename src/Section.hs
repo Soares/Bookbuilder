@@ -21,16 +21,17 @@ type Section = TreePos Full Isolate
 
 load :: FilePath -> String -> Scope -> IO Section
 load dir name scope = do
-    i <- Isolate.create (dir </> name)
+    i <- Isolate.create dir name
     discover dir scope (fromTree $ Node i [])
 
 
 discover :: FilePath -> Scope -> Section -> IO Section
 discover dir scope z = do
+    let dir' = Isolate.path dir (label z)
+    let pipe s hole = maybe hole nextSpace <$> discover' dir' scope s hole
     subs <- subsections dir z
     discovered <- concatM (map pipe subs) (children z)
     return $ fromMaybe z $ parent discovered
-    where pipe s hole = maybe hole nextSpace <$> discover' dir scope s hole
 discover' :: FilePath -> Scope -> Isolate -> TreePos Empty Isolate -> IO (Maybe Section)
 discover' dir scope s z = do
     let z' = insert (Node s []) z
@@ -62,4 +63,6 @@ subsections :: FilePath -> Section -> IO [Isolate]
 subsections path z = do
     let dir = path </> Isolate.name (label z)
     there <- doesDirectoryExist dir
-    if there then mapM Isolate.create =<< ls dir else return []
+    if not there then return [] else do
+        files <- ls dir
+        mapM (uncurry Isolate.create . splitFileName) files

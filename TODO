@@ -1,3 +1,4 @@
+* Nobody has access to the global title in vars
 * Add an author template variable
 * Add multi-extensions to themes
 * Split themes into directories
