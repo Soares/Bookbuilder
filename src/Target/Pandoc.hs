@@ -5,7 +5,9 @@ import Data.Char ( toLower )
 import Data.Configger ( Config )
 import Data.Maybe ( fromMaybe )
 import System.FilePath.Posix ( takeExtension )
-import Text.Pandoc ( Pandoc
+import Text.Pandoc ( Pandoc(..)
+                   , Meta(..)
+                   , Inline(..)
                    , WriterOptions(..)
                    , ParserState(..)
                    , readers
@@ -26,9 +28,13 @@ defaultReader = readMarkdown
 defaultWriter :: WriterOptions -> Pandoc -> String
 defaultWriter = writeLaTeX
 
+smartReaders :: [String]
+smartReaders = ["latex"]
+
 parse :: String -> String -> Pandoc
-parse format = r defaultParserState{ stateSmart = True } where
-    r = fromMaybe defaultReader (lookup format readers)
+parse format = reader opts where
+    reader = fromMaybe defaultReader (lookup format readers)
+    opts = defaultParserState{ stateSmart = format `elem` smartReaders }
 
 render :: String -> Pandoc -> String
 render format = w defaultWriterOptions where
@@ -37,19 +43,25 @@ render format = w defaultWriterOptions where
 write :: String -> Config -> FilePath -> Pandoc -> IO ()
 write format conf dest doc = case lookup format writers of
     Nothing | format == "pdf" ->
-        PDF.outputLaTeX conf dest $ writeLaTeX opts doc
+        PDF.outputLaTeX conf dest $ writeLaTeX opts doc'
     Nothing | format == "epub" ->
-        writeEPUB (Config.style conf) epubOpts doc
+        writeEPUB (Config.style conf) epubOpts doc'
         >>= B.writeFile (encodeString dest)
     Nothing | format == "odt" ->
-        writeODT (Config.resources conf) opts doc
+        writeODT (Config.resources conf) opts doc'
         >>= B.writeFile (encodeString dest)
-    Nothing | format == "-" -> putStr $ defaultWriter opts doc
-    Nothing -> writeFile dest $ defaultWriter opts doc
-    Just r -> writeFile dest $ r opts doc
+    Nothing | format == "-" -> putStr $ defaultWriter opts doc'
+    Nothing -> writeFile dest $ defaultWriter opts doc'
+    Just r -> writeFile dest $ r opts doc'
     where opts = defaultWriterOptions
           epubOpts = opts{ writerEPUBMetadata = metadata }
           metadata = fromMaybe "" (Config.metadata conf)
+          doc' = doc `withDefaultData` conf
+
+withDefaultData :: Pandoc -> Config -> Pandoc
+withDefaultData (Pandoc (Meta t [] d) bs) conf = Pandoc (Meta t as d) bs where
+    as = map (return . Str) (Config.values "author" conf)
+withDefaultData doc _ = doc
 
 readerName :: FilePath -> String
 readerName x = case takeExtension (map toLower x) of
@@ -95,6 +107,7 @@ writerName x = case takeExtension (map toLower x) of
     ".epub"     -> "epub"
     ".org"      -> "org"
     ".pdf"      -> "pdf"
+    ".html"     -> "html"
     ['.',y] | y `elem` ['1'..'9'] -> "man"
     ".-"        -> "-"
     _           -> ""

@@ -88,7 +88,7 @@ isAny t = _constraints t == Unbounded
 
 fallback :: Template
 fallback = Template { _name = "fallback"
-					, _source = "# $title$ #\n$body$\n"
+					, _source = "\n# $title$ #\n\n$body$\n"
 					, _constraints = Unbounded }
 
 

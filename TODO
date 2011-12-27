@@ -3,6 +3,8 @@ BUGS:
 
 TODO:
     add a 'silent' option
+	clean up environment handling in section
+	clean up pandoc format handling
     add a flag to signify "this is src, everything else is one level up"
     move to a different (preferably compiled) template system
 	add an option to turn off auto-newline-addition

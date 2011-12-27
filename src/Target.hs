@@ -51,8 +51,12 @@ defaultTheme = "default"
 load :: Config -> FilePath -> DangerousT IO Target
 load conf path = do
     isDirectory <- liftIO $ doesDirectoryExist path
-    if isDirectory then loadDir conf path
+    target <- if isDirectory
+        then loadDir conf path
         else return $ simpleTarget conf path
+    let to = Pandoc.writerName $ _name target
+    when (null to) (warn $ UnrecognizedFormat $ _name target)
+    return target
 
 simpleTarget :: Config -> FilePath -> Target
 simpleTarget conf path = Target{ _name      = takeFileName path
@@ -67,7 +71,6 @@ loadDir base dir = do
     format <- pickFormat dir templates
     let name = takeFileName dir
     let to = Pandoc.writerName name
-    when (null to) (warn $ UnrecognizedFormat name)
     conf <- Config.merge base dir to
     return Target{ _name      = name
                  , _innerExt  = format

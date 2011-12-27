@@ -44,8 +44,9 @@ type Expander = (Focus -> [(String, String)] -> String)
 flatten :: String -> Section -> Renderer -> Expander -> String
 flatten t z render expand = expand loc vars where
     i = label z
+    fmt = Pandoc.writerName $ Isolate.name i
     body = case Isolate.body i of
-        Just text -> render $ Pandoc.parse (Isolate.name i) text
+        Just text -> render $ Pandoc.parse fmt text
         Nothing -> flatten' render expand (children z) ""
     vars = [("title", t), ("body", body)] ++ variables z
     loc = Info.location z

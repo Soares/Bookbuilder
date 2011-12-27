@@ -4,6 +4,7 @@ module Target.Config
     , load
     , merge
     , vars
+    , values
     , option
     , setOption
     , set
@@ -36,7 +37,7 @@ variableSection, optionSection :: String
 variableSection = "VARIABLES"
 optionSection = "OPTIONS"
 
-styleFile, resourceFile :: String
+styleFile, resourceFile, metadataFile :: String
 styleFile = "style.css"
 resourceFile = "resources.odt"
 metadataFile = "metadata.xml"
@@ -89,7 +90,7 @@ load path = do
 
 merge :: Config -> FilePath -> String -> DangerousT IO Config
 merge conf dir fmt = let name = takeFileName dir in do
-    new <- raw dir
+    new <- load dir
     when (isJust (option styleOption new) && fmt /= "epub")
         (warn $ IgnoringStyle name)
     when (isJust (option metadataOption new) && fmt /= "epub")
@@ -100,6 +101,9 @@ merge conf dir fmt = let name = takeFileName dir in do
 
 vars :: Config -> [(String, String)]
 vars = Configger.items variableSection
+
+values :: String -> Config -> [String]
+values str conf = map snd $ filter ((str ==) . fst) (vars conf)
 
 option :: String -> Config -> Maybe String
 option = Configger.get optionSection
