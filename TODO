@@ -1,35 +1,12 @@
-* Nobody has access to the global title in vars
-* Add an author template variable
-* Add multi-extensions to themes
-* Split themes into directories
-* Add multi-outputs for themes with more than one extension
-* allow "from here" and "to here" flags when detecting
-* switch 'detect' to be default when not given a book param
+BUGS:
+	No template can access the book title in 'vars'
 
 TODO:
-    rename the profiles dir to targets
-    add a 'targets' option
-        to limit the targets used
-    add context file support
-        profiles/context and profiles/*/context
-        remove 'author' after having done so
-    add config file support
-        profiles/config and profiles/*/config
-        add support as writer options
-    change Config to Environment
-        expose targets instead of profiles
-        profiles named 'default' should output with the title name
-        split 'Options' out of 'Environment'
-    make a Book/ namespace
-        turn all the functions of [Section] into functions of Position
-        make sure that environment starts with the base position
     add a 'silent' option
     add a flag to signify "this is src, everything else is one level up"
     move to a different (preferably compiled) template system
+	add an option to turn off auto-newline-addition
 
-CHECK:
-    whether or not we need newlines at the end of templates
-        case in point: remove newlines from default.epub md files?
 Test:
     on a book where src/ is a file
     with --src="." (how many things does that break?)
