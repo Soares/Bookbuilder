@@ -55,7 +55,7 @@ flatten' render expand z = case nextTree z of
         t = Path.title $ Isolate.name $ label c
         ours = flatten t c render expand
         rest = flatten' render expand $ nextSpace c
-        in showString ours . rest
+        in showString ours . (showString "\n") . rest
     Nothing -> showString ""
 
 
