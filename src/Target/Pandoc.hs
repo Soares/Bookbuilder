@@ -27,7 +27,7 @@ defaultWriter :: WriterOptions -> Pandoc -> String
 defaultWriter = writeLaTeX
 
 parse :: String -> String -> Pandoc
-parse format = r defaultParserState where
+parse format = r defaultParserState{ stateSmart = True } where
 	r = fromMaybe defaultReader (lookup format readers)
 
 render :: String -> Pandoc -> String
