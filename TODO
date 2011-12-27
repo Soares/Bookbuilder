@@ -2,6 +2,7 @@ BUGS:
 	No template can access the book title in 'vars'
 
 TODO:
+	add a 'epub-cover-image' option
     add a 'silent' option
 	clean up environment handling in section
 	clean up pandoc format handling

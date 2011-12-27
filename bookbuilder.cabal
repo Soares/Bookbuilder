@@ -27,6 +27,7 @@ Executable bookbuilder
     base >= 4 && < 5,
     Dangerous >= 0.2.2,
     Focus >= 0.1.2,
+    MissingH >= 1.1,
     Configger >= 0.1,
     Limit >= 1.0,
     bytestring >= 0.9,

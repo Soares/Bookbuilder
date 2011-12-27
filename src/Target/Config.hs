@@ -21,6 +21,7 @@ import Control.Monad.Trans
 import Control.Monad.Loops
 import Control.Dangerous hiding ( Warning )
 import Data.Char
+import Data.List.Utils hiding ( merge )
 import qualified Data.Configger as Configger
 import Data.Configger ( Config )
 import Data.Maybe
@@ -33,9 +34,10 @@ import Text.Printf
 configFile :: String
 configFile = "config"
 
-variableSection, optionSection :: String
+variableSection, optionSection, localSection :: String
 variableSection = "VARIABLES"
 optionSection = "OPTIONS"
+localSection = "LOCAL"
 
 styleFile, resourceFile, metadataFile :: String
 styleFile = "style.css"
@@ -54,8 +56,12 @@ debugOption = "debug"
 
 -- | Config file loading and manipulation
 
+isCover :: String -> Bool
+isCover f = startswith "cover-image." name || startswith "cover." name
+    where name = takeFileName f
+
 isSpecial :: FilePath -> Bool
-isSpecial = flip elem special . takeFileName where
+isSpecial f = isCover f || (takeFileName f) `elem` special where
     special = [configFile, styleFile, resourceFile, metadataFile]
 
 isConfig :: FilePath -> Bool
@@ -75,7 +81,7 @@ load path = do
     hasStyle <- liftIO $ doesFileExist sfile
     hasResources <- liftIO $ doesFileExist rfile
     hasMetadata <- liftIO $ doesFileExist mfile
-    conf <- raw path
+    basic <- raw path
     let setStyle c = do
         css <- liftIO $ readFile sfile
         return $ setOption styleOption css c
@@ -86,7 +92,10 @@ load path = do
     let setters = [setStyle | hasStyle] ++
                   [setResources | hasResources] ++
                   [setMetadata | hasMetadata]
-    concatM setters conf
+    conf <- concatM setters basic
+    let locals = Configger.items localSection conf
+    let mapped = map (\(x, y) -> (x, path </> y)) locals
+    return $ Configger.mergeSection (variableSection, mapped) conf
 
 merge :: Config -> FilePath -> String -> DangerousT IO Config
 merge conf dir fmt = let name = takeFileName dir in do

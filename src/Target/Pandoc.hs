@@ -54,7 +54,9 @@ write format conf dest doc = case lookup format writers of
     Nothing -> writeFile dest $ defaultWriter opts doc'
     Just r -> writeFile dest $ r opts doc'
     where opts = defaultWriterOptions
-          epubOpts = opts{ writerEPUBMetadata = metadata }
+          epubOpts = opts{ writerEPUBMetadata = metadata
+                         , writerVariables = [("epub-cover-image", cover) |
+                           cover <- Config.values "epub-cover-image" conf] }
           metadata = fromMaybe "" (Config.metadata conf)
           doc' = doc `withDefaultData` conf
 
