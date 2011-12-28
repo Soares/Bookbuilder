@@ -55,7 +55,7 @@ load opts = do
     root <- liftIO $ Section.load srcDir "" scope
 
     -- Load the targets
-    conf <- Config.load targetDir
+    conf <- Config.setValue "book-title" title <$> Config.load targetDir
     let conf' = if optDebug opts then Config.setDebug conf else conf
     -- Filter the targets included by '-t' options
     let inTargets path = case optTargets opts of

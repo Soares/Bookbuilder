@@ -1,10 +1,7 @@
-BUGS:
-	No template can access the book title in 'vars'
-
 TODO:
-	add a 'epub-cover-image' option
     add a 'silent' option
 	clean up environment handling in section
+	clean up the setting of "book-title" in Book
 	clean up pandoc format handling
     add a flag to signify "this is src, everything else is one level up"
     move to a different (preferably compiled) template system

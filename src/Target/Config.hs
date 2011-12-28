@@ -5,6 +5,7 @@ module Target.Config
     , merge
     , vars
     , values
+    , setValue
     , option
     , setOption
     , set
@@ -113,6 +114,9 @@ vars = Configger.items variableSection
 
 values :: String -> Config -> [String]
 values str conf = map snd $ filter ((str ==) . fst) (vars conf)
+
+setValue :: String -> String -> Config -> Config
+setValue = Configger.set variableSection
 
 option :: String -> Config -> Maybe String
 option = Configger.get optionSection
