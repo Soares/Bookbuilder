@@ -33,7 +33,7 @@ Executable bookbuilder
     bytestring >= 0.9,
     process >= 1.0,
     utf8-string >= 0.3,
-    pandoc >= 1.8,
+    pandoc >= 1.9,
     filepath >= 1.2,
     monad-loops >= 0.3,
     split >= 0.1,
