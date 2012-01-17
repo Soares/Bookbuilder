@@ -28,13 +28,10 @@ defaultReader = readMarkdown
 defaultWriter :: WriterOptions -> Pandoc -> String
 defaultWriter = writeLaTeX
 
-smartReaders :: [String]
-smartReaders = ["latex"]
-
 parse :: String -> String -> Pandoc
 parse format = reader opts where
     reader = fromMaybe defaultReader (lookup format readers)
-    opts = defaultParserState{ stateSmart = format `elem` smartReaders }
+    opts = defaultParserState{ stateSmart = True }
 
 render :: String -> Pandoc -> String
 render format = w defaultWriterOptions where
