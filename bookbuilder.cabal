@@ -11,8 +11,6 @@ Description:   Turn structured directory of text files into a single file.
                Subsets of the entire book can be built.
                The tool can discover the current location in a book and
                build only that location.
-Synopsis:      Compile a book in a directory into a single file
-Description:   Tool for building books
 Author:        Nate Soares
 Maintainer:    nate@natesoares.com
 Build-Type:    Simple
