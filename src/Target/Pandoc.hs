@@ -42,7 +42,7 @@ write format conf dest doc = case lookup format writers of
     Nothing | format == "pdf" ->
         PDF.outputLaTeX conf dest $ writeLaTeX opts doc'
     Nothing | format == "epub" ->
-        writeEPUB (Config.style conf) epubOpts doc'
+        writeEPUB (Config.style conf) [] epubOpts doc'
         >>= B.writeFile (encodeString dest)
     Nothing | format == "odt" ->
         writeODT (Config.resources conf) opts doc'

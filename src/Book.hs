@@ -60,7 +60,7 @@ load opts = do
     -- Filter the targets included by '-t' options
     let inTargets path = case optTargets opts of
                             [] -> True
-                            xs -> takeFileName path `elem` xs
+                            xs -> (dropExtension . takeFileName) path `elem` xs
     let included path = not (Config.isSpecial path) && inTargets path
     paths <- filter included <$> liftIO (ls targetDir)
     targets <- mapM (Target.load conf') paths
